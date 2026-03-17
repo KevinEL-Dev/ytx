@@ -3,11 +3,11 @@ use std::io;
 use std::io::prelude::*;
 use std::path::Path;
 
+use ollama_rs::Ollama;
+use ollama_rs::generation::completion::request::GenerationRequest;
 use sentencex::segment;
 
-use rust_bert::pipelines::sentence_embeddings::{
-    SentenceEmbeddingsBuilder, SentenceEmbeddingsModelType,
-};
+use ytt::YouTubeTranscript;
 
 use clap::{Parser, Subcommand};
 #[derive(Parser)]
@@ -16,6 +16,9 @@ struct Cli {
     /// sets file to parse
     #[arg(short, long, value_name = "FILE")]
     file_path: Option<String>,
+    /// sets youtube_link to fetch
+    #[arg(short, long, value_name = "YOUTUBELINK")]
+    link: Option<String>,
 
     /// Turn debugging information on
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -32,19 +35,55 @@ enum Commands {
         list: bool,
     },
 }
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     if let Some(config_path) = cli.file_path.as_deref() {
         println!("value for text transcript to parse: {}", config_path);
         match get_file_contents(config_path) {
-            Ok(buf) => segment_sentences(buf.replace("\n", " ")),
+            Ok(buf) => {
+                segment_sentences(buf.replace("\n", " "));
+
+                let ollama = Ollama::default();
+
+                let model = "kimi-k2.5:cloud".to_string();
+                let prompt = buf;
+
+                let res = ollama.generate(GenerationRequest::new(model, prompt)).await;
+
+                match res {
+                    Ok(res) => println!("{}", res.response),
+                    Err(err) => eprintln!("{err}"),
+                }
+            }
             Err(err) => eprintln!("{err}"),
         }
     }
+    if let Some(youtube_link) = cli.link.as_deref() {
+        println!("seems that you provided a link for youtube");
+        let api = YouTubeTranscript::new();
+        let video_id = YouTubeTranscript::extract_video_id(youtube_link)?;
+        let transcript = api.fetch_transcript(&video_id, Some(vec!["en"])).await?;
+        let mut buf = String::new();
+        for item in transcript.transcript {
+            //println!("[{}s] {}", item.start, item.text);
+            buf += &(item.text + " ");
+        }
+        //println!("{buf}");
 
-    if let Err(err) = test_rust_bert() {
-        eprintln!("{err}");
+        let ollama = Ollama::default();
+
+        let model = "kimi-k2.5:cloud".to_string();
+        let prompt = buf
+            + "This is a youtube transcript, turn it into a readable article. Maintain the authors style.";
+
+        let res = ollama.generate(GenerationRequest::new(model, prompt)).await;
+
+        match res {
+            Ok(res) => println!("{}", res.response),
+            Err(err) => eprintln!("{err}"),
+        }
     }
 
     match &cli.command {
@@ -57,6 +96,10 @@ fn main() {
         }
         None => {}
     }
+
+    // default localhost:11434
+
+    Ok(())
 }
 fn get_file_contents(file_path: &str) -> io::Result<String> {
     let path = Path::new(file_path);
@@ -71,15 +114,4 @@ fn segment_sentences(text: String) {
     for (i, sentence) in senteces.iter().enumerate() {
         println!("{}. {}", i + 1, sentence);
     }
-}
-fn test_rust_bert() -> anyhow::Result<()> {
-    let model = SentenceEmbeddingsBuilder::remote(SentenceEmbeddingsModelType::AllMiniLmL12V2)
-        .create_model()?;
-
-    let senteces = ["this is an exale sentence", "each sentence is converted"];
-
-    let embeddings = model.encode(&senteces)?;
-
-    println!("{embeddings:?}");
-    Ok(())
 }

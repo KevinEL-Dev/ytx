@@ -8,6 +8,7 @@ ytt = { git = "https://github.com/ljantzen/ytt.git"}
 tokio = { version = "1.0", features = ["full"] }
 clap = { version = "4.6.0", features = ["derive"] }
 sentencex = "0.1.17"
-rust-bert = "0.23.0"
 anyhow = "1.0.102"
 console = "0.15"
+ollama-rs = "0.3.4"
+
