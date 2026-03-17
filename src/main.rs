@@ -9,7 +9,7 @@ use sentencex::segment;
 
 use ytt::YouTubeTranscript;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
@@ -20,12 +20,23 @@ struct Cli {
     #[arg(short, long, value_name = "YOUTUBELINK")]
     link: Option<String>,
 
+    #[arg(short, long, value_enum, value_name = "MODEL")]
+    model: Option<Model>,
     /// Turn debugging information on
     #[arg(short, long, action = clap::ArgAction::Count)]
     debug: u8,
 
     #[command(subcommand)]
     command: Option<Commands>,
+}
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum Model {
+    /// Model type Kimi-k2.5:cloud
+    KimiK2,
+    /// Model type Qwen3.5:cloud
+    Qwen3,
+    /// Model type glm-5:cloud
+    Glm5,
 }
 #[derive(Subcommand)]
 enum Commands {
@@ -40,7 +51,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     if let Some(config_path) = cli.file_path.as_deref() {
-        println!("value for text transcript to parse: {}", config_path);
         match get_file_contents(config_path) {
             Ok(buf) => {
                 segment_sentences(buf.replace("\n", " "));
@@ -61,24 +71,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     if let Some(youtube_link) = cli.link.as_deref() {
-        println!("seems that you provided a link for youtube");
         let api = YouTubeTranscript::new();
         let video_id = YouTubeTranscript::extract_video_id(youtube_link)?;
         let transcript = api.fetch_transcript(&video_id, Some(vec!["en"])).await?;
         let mut buf = String::new();
         for item in transcript.transcript {
-            //println!("[{}s] {}", item.start, item.text);
             buf += &(item.text + " ");
         }
-        //println!("{buf}");
 
         let ollama = Ollama::default();
 
-        let model = "kimi-k2.5:cloud".to_string();
+        let mut chosen_model = String::new();
+        if let Some(model) = cli.model.as_ref() {
+            match model {
+                Model::KimiK2 => chosen_model = "kimi-k2.5:cloud".to_string(),
+                Model::Qwen3 => chosen_model = "qwen3.5:cloud".to_string(),
+                Model::Glm5 => chosen_model = "glm-5:cloud".to_string(),
+            }
+        } else {
+            chosen_model = "kimi-k2.5:cloud".to_string();
+        }
         let prompt = buf
             + "This is a youtube transcript, turn it into a readable article. Maintain the authors style.";
 
-        let res = ollama.generate(GenerationRequest::new(model, prompt)).await;
+        let res = ollama
+            .generate(GenerationRequest::new(chosen_model, prompt))
+            .await;
 
         match res {
             Ok(res) => println!("{}", res.response),
@@ -96,8 +114,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         None => {}
     }
-
-    // default localhost:11434
 
     Ok(())
 }
