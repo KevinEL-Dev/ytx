@@ -143,5 +143,6 @@ fn check_if_ollama_installed() -> bool {
         .expect("failed to execute which command");
 
     assert_ne!(b"ollama not found", output.stdout.as_slice());
+    assert_ne!(b"", output.stdout.as_slice());
     return true;
 }
