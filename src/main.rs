@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 use std::path::Path;
+use std::process::Command;
 
 use ollama_rs::Ollama;
 use ollama_rs::generation::completion::request::GenerationRequest;
@@ -49,6 +50,10 @@ enum Commands {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+
+    // some sort of checking to see if lama installed
+    check_if_ollama_installed();
+    println!("ollama installed");
 
     if let Some(config_path) = cli.file_path.as_deref() {
         match get_file_contents(config_path) {
@@ -130,4 +135,13 @@ fn segment_sentences(text: String) {
     for (i, sentence) in senteces.iter().enumerate() {
         println!("{}. {}", i + 1, sentence);
     }
+}
+fn check_if_ollama_installed() -> bool {
+    let output = Command::new("which")
+        .arg("ollama")
+        .output()
+        .expect("failed to execute which command");
+
+    assert_ne!(b"ollama not found", output.stdout.as_slice());
+    return true;
 }
