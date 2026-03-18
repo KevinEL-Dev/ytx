@@ -53,10 +53,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // some sort of checking to see if lama installed
     if !check_if_ollama_installed() {
-        eprint!("ollama not installed");
+        eprint!("ollama not installed, install ollama please");
         panic!();
     }
-    println!("ollama installed");
 
     if let Some(config_path) = cli.file_path.as_deref() {
         match get_file_contents(config_path) {
