@@ -52,7 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     // some sort of checking to see if lama installed
-    check_if_ollama_installed();
+    if !check_if_ollama_installed() {
+        eprint!("ollama not installed");
+        panic!();
+    }
     println!("ollama installed");
 
     if let Some(config_path) = cli.file_path.as_deref() {
@@ -142,7 +145,12 @@ fn check_if_ollama_installed() -> bool {
         .output()
         .expect("failed to execute which command");
 
-    assert_ne!(b"ollama not found", output.stdout.as_slice());
-    assert_ne!(b"", output.stdout.as_slice());
-    return true;
+    let mut string_output = String::new();
+    if let Err(err) = output.stdout.as_slice().read_to_string(&mut string_output) {
+        eprint!("error with reading output from which {err}");
+    }
+    if string_output.is_empty() || string_output == "ollama not found" {
+        return false;
+    }
+    true
 }
