@@ -1,8 +1,11 @@
+use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process::Command;
+
+use directories::ProjectDirs;
 
 use ollama_rs::Ollama;
 use ollama_rs::generation::completion::request::GenerationRequest;
@@ -47,9 +50,60 @@ enum Commands {
         list: bool,
     },
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_data_dir() {
+        let app_name = "test".to_string();
+        match return_data_dir(app_name.clone()) {
+            Some(test_path) => {
+                // create the test directory in xdg path data directory
+                if let Err(err) = create_dir_for_cli(test_path.clone()) {
+                    panic!("something went wrong creating dir for test cli. Err: {err}")
+                }
+                // if test directory is created now check if it exist
+                if let Some(res) = check_if_data_dir_exist(app_name) {
+                    match res {
+                        true => println!("the data dir exist for {test_path}"),
+                        false => panic!("test dir does not exist when we go and check for it"),
+                    }
+                } else {
+                    panic!("failed to get test path in check_if_data_dir_exist")
+                }
+                // if we made it here than yay, lets remove the test dir that we created
+                if let Err(err) = remove_dir(test_path) {
+                    panic!("we failed to remove our test directory. Err: {err}")
+                }
+            }
+            None => panic!("something went wrong getting test path"),
+        }
+    }
+}
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+    if let Some(res) = check_if_data_dir_exist("ytx".to_string()) {
+        match res {
+            true => println!("the path exists for our data lets go"),
+            // we should create the directory  for our user
+            false => {
+                println!("the path does not exist, welcome new user");
+                if let Some(data_path) = return_data_dir("ytx".to_string()) {
+                    if let Err(err) = create_dir_for_cli(data_path) {
+                        eprint!(
+                            "something went wrong in creating the dir for our favorite cli tool. err: {err}"
+                        );
+                    } else {
+                        println!("yay we made the directory maybe")
+                    }
+                }
+            }
+        }
+    } else {
+        println!("something went wrong in getting xdg directories")
+    }
 
     // some sort of checking to see if lama installed
     if !check_if_ollama_installed() {
@@ -152,4 +206,25 @@ fn check_if_ollama_installed() -> bool {
         return false;
     }
     true
+}
+fn check_if_data_dir_exist(app_name: String) -> Option<bool> {
+    if let Some(proj_dir) = ProjectDirs::from("", "", &app_name) {
+        println!("{:?}", proj_dir.config_dir());
+        return Some(fs::metadata(proj_dir.config_dir()).is_ok());
+    }
+    None
+}
+fn return_data_dir(app_name: String) -> Option<String> {
+    if let Some(proj_dir) = ProjectDirs::from("", "", &app_name) {
+        return Some(proj_dir.config_dir().to_str()?.to_string());
+    }
+    None
+}
+fn create_dir_for_cli(dir_path: String) -> std::io::Result<()> {
+    fs::create_dir(dir_path)?;
+    Ok(())
+}
+fn remove_dir(dir_path: String) -> std::io::Result<()> {
+    fs::remove_dir(dir_path)?;
+    Ok(())
 }

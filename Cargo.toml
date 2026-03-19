@@ -11,4 +11,5 @@ sentencex = "0.1.17"
 anyhow = "1.0.102"
 console = "0.15"
 ollama-rs = "0.3.4"
+directories = "6.0.0"
 
