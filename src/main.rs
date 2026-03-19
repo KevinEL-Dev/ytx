@@ -9,6 +9,7 @@ use directories::ProjectDirs;
 
 use ollama_rs::Ollama;
 use ollama_rs::generation::completion::request::GenerationRequest;
+use rusqlite::{Connection, Result, params};
 use sentencex::segment;
 
 use ytt::YouTubeTranscript;
@@ -97,7 +98,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         println!("something went wrong in getting xdg directories")
     }
+    // dir for cli should be created so lets create a connection to our db
+    let app_name_path =
+        return_data_dir("ytx".to_string()).expect("failed to retrieve app data dir");
 
+    let con = open_ytx_db(app_name_path).expect("failed to open connection to db");
+
+    // once we get the connection lets check if our tables are created
+    let res_for_video_table = check_if_tables_exist(&con, "video").expect("failed to check table");
+    if !res_for_video_table {
+        create_table_video(&con, "video").expect("failed to add table video");
+        let res_for_video_table =
+            check_if_tables_exist(&con, "video").expect("failed to check table");
+        if !res_for_video_table {
+            panic!("we failed to create the table name");
+        }
+    }
+    // then create transcript tables
+    let res_for_transcript_table =
+        check_if_tables_exist(&con, "transcript").expect("failed to check table");
+    if !res_for_transcript_table {
+        create_table_transcript(&con, "transcript").expect("failet to add table transcript");
+        let res_for_video_table =
+            check_if_tables_exist(&con, "transcript").expect("failed to check table");
+        if !res_for_video_table {
+            panic!("we failed to create the table transcript");
+        }
+    }
     // some sort of checking to see if lama installed
     if !check_if_ollama_installed() {
         eprint!("ollama not installed, install ollama please");
@@ -219,5 +246,49 @@ fn create_dir_for_cli(dir_path: String) -> std::io::Result<()> {
 }
 fn remove_dir(dir_path: String) -> std::io::Result<()> {
     fs::remove_dir(dir_path)?;
+    Ok(())
+}
+fn open_ytx_db(path: String) -> Result<Connection> {
+    let new_path = path + "/ytx.db";
+    let db = Connection::open(new_path)?;
+    println!("{}", db.is_autocommit());
+    Ok(db)
+}
+fn check_if_tables_exist(con: &Connection, table_name: &str) -> Result<bool> {
+    // two tables should exist
+    // youtube video id table
+    let res_video_table = con
+        .table_exists(Some("main"), table_name)
+        .expect("something went wrong searching tables");
+    Ok(res_video_table)
+    // if dne then return false
+    // if youtubevideo_table dne, then create it
+    // youtube metadata table that stores, trascript, language,
+    // if youtube metadata dne, create it
+}
+fn create_table_video(con: &Connection, table_name: &str) -> Result<()> {
+    let sql = "Create TABLE ".to_owned()
+        + table_name
+        + "(id INTEGER PRIMARY KEY,
+        video_id TEXT NOT NULL UNIQUE,
+        video_link TEXT NOT NULL UNIQUE);";
+    match con.execute(&sql, ()) {
+        Ok(updated) => println!("{} rows were updated", updated),
+        Err(err) => println!("update failed: {}", err),
+    }
+    Ok(())
+}
+fn create_table_transcript(con: &Connection, table_name: &str) -> Result<()> {
+    let sql = "Create TABLE ".to_owned()
+        + table_name
+        + "(id INTEGER PRIMARY KEY,
+        video_id INTEGER REFERENCES video(id),
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        language NEXT NOT NULL);";
+    match con.execute(&sql, ()) {
+        Ok(updated) => println!("{} rows were updated", updated),
+        Err(err) => println!("update failed: {}", err),
+    }
     Ok(())
 }
