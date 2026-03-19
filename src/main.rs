@@ -60,22 +60,15 @@ mod tests {
         match return_data_dir(app_name.clone()) {
             Some(test_path) => {
                 // create the test directory in xdg path data directory
-                if let Err(err) = create_dir_for_cli(test_path.clone()) {
-                    panic!("something went wrong creating dir for test cli. Err: {err}")
-                }
+                create_dir_for_cli(test_path.clone()).expect("failed to create test directory");
                 // if test directory is created now check if it exist
-                if let Some(res) = check_if_data_dir_exist(app_name) {
-                    match res {
-                        true => println!("the data dir exist for {test_path}"),
-                        false => panic!("test dir does not exist when we go and check for it"),
-                    }
-                } else {
-                    panic!("failed to get test path in check_if_data_dir_exist")
-                }
+                let exists = check_if_data_dir_exist(app_name.clone())
+                    .expect("failed to check if data dir exists");
+
+                // if exists is false, it will print the message
+                assert!(exists, "data diretory should exist");
                 // if we made it here than yay, lets remove the test dir that we created
-                if let Err(err) = remove_dir(test_path) {
-                    panic!("we failed to remove our test directory. Err: {err}")
-                }
+                remove_dir(test_path).expect("failed to remove our test directory");
             }
             None => panic!("something went wrong getting test path"),
         }
