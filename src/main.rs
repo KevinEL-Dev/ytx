@@ -157,7 +157,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(youtube_link) = cli.link.as_deref() {
         let vid_id = parse_vid_id_from_youtube_link(youtube_link.to_string().clone());
-        println!(" {} <- is the vid id that we parsed using regex", vid_id);
+        insert_new_video_via_link(&con, youtube_link.to_string().clone())
+            .expect("failed to insert a value");
         let api = YouTubeTranscript::new();
         let video_id = YouTubeTranscript::extract_video_id(youtube_link)?;
         let transcript = api.fetch_transcript(&video_id, Some(vec!["en"])).await?;
@@ -299,14 +300,21 @@ fn create_table_transcript(con: &Connection, table_name: &str) -> Result<()> {
     Ok(())
 }
 // insert via link
-fn insert_new_video_via_link(video_link: String) -> Result<()> {
-    let sql = String::new();
-    todo!()
+fn insert_new_video_via_link(con: &Connection, video_link: String) -> Result<()> {
+    // parse video link for vid id
+    let vid_id = parse_vid_id_from_youtube_link(video_link.clone());
+    let sql = "INSERT INTO video (video_id, video_link)
+        VALUES(:video_id,:video_link);";
+    match con.execute(sql, &[(":video_id", &vid_id), (":video_link", &video_link)]) {
+        Ok(updated) => println!("{} rows were updated", updated),
+        Err(err) => println!("update failed: {}", err),
+    }
+    Ok(())
 }
 fn parse_vid_id_from_youtube_link(video_link: String) -> String {
     // video link will be https://www.youtube.com/watch?v=<vid_id>
     let re = Regex::new(r"https://www.youtube.com/watch\?v=(.{11})").unwrap();
     let hay = &video_link;
     let caps = re.captures(hay).unwrap();
-    return caps[1].to_string();
+    caps[1].to_string()
 }
