@@ -305,22 +305,8 @@ fn insert_new_video_via_link(video_link: String) -> Result<()> {
 }
 fn parse_vid_id_from_youtube_link(video_link: String) -> String {
     // video link will be https://www.youtube.com/watch?v=<vid_id>
-    let re = Regex::new(r"v=(.{11})").unwrap();
+    let re = Regex::new(r"https://www.youtube.com/watch\?v=(.{11})").unwrap();
     let hay = &video_link;
-    println!("does our re match: {:?}", re.is_match(hay));
-    let vid: Vec<&str> = re
-        .captures_iter(hay)
-        .map(|caps| {
-            // The unwraps are okay because every capture group must match if the whole
-            // regex matches, and in this context, we know we have a match.
-            //
-            // Note that we use `caps.name("y").unwrap().as_str()` instead of
-            // `&caps["y"]` because the lifetime of the former is the same as the
-            // lifetime of `hay` above, but the lifetime of the latter is tied to the
-            // lifetime of `caps` due to how the `Index` trait is defined.
-            let (_, [vid_id]) = caps.extract();
-            vid_id
-        })
-        .collect();
-    return vid[0].to_string();
+    let caps = re.captures(hay).unwrap();
+    return caps[1].to_string();
 }
