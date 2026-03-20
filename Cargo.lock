@@ -2183,6 +2183,7 @@ dependencies = [
  "console",
  "directories",
  "ollama-rs",
+ "regex",
  "rusqlite",
  "sentencex",
  "tokio",

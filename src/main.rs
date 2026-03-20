@@ -9,7 +9,11 @@ use directories::ProjectDirs;
 
 use ollama_rs::Ollama;
 use ollama_rs::generation::completion::request::GenerationRequest;
-use rusqlite::{Connection, Result, params};
+
+use rusqlite::{Connection, Result};
+
+use regex::Regex;
+
 use sentencex::segment;
 
 use ytt::YouTubeTranscript;
@@ -152,6 +156,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     if let Some(youtube_link) = cli.link.as_deref() {
+        let vid_id = parse_vid_id_from_youtube_link(youtube_link.to_string().clone());
+        println!(" {} <- is the vid id that we parsed using regex", vid_id);
         let api = YouTubeTranscript::new();
         let video_id = YouTubeTranscript::extract_video_id(youtube_link)?;
         let transcript = api.fetch_transcript(&video_id, Some(vec!["en"])).await?;
@@ -291,4 +297,30 @@ fn create_table_transcript(con: &Connection, table_name: &str) -> Result<()> {
         Err(err) => println!("update failed: {}", err),
     }
     Ok(())
+}
+// insert via link
+fn insert_new_video_via_link(video_link: String) -> Result<()> {
+    let sql = String::new();
+    todo!()
+}
+fn parse_vid_id_from_youtube_link(video_link: String) -> String {
+    // video link will be https://www.youtube.com/watch?v=<vid_id>
+    let re = Regex::new(r"v=(.{11})").unwrap();
+    let hay = &video_link;
+    println!("does our re match: {:?}", re.is_match(hay));
+    let vid: Vec<&str> = re
+        .captures_iter(hay)
+        .map(|caps| {
+            // The unwraps are okay because every capture group must match if the whole
+            // regex matches, and in this context, we know we have a match.
+            //
+            // Note that we use `caps.name("y").unwrap().as_str()` instead of
+            // `&caps["y"]` because the lifetime of the former is the same as the
+            // lifetime of `hay` above, but the lifetime of the latter is tied to the
+            // lifetime of `caps` due to how the `Index` trait is defined.
+            let (_, [vid_id]) = caps.extract();
+            vid_id
+        })
+        .collect();
+    return vid[0].to_string();
 }
