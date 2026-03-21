@@ -1,22 +1,22 @@
-use std::fs;
 use std::fs::File;
-use std::io;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process::Command;
+use std::{fs, process::exit};
+use std::{io, process};
 
 use directories::ProjectDirs;
 
 use ollama_rs::Ollama;
 use ollama_rs::generation::completion::request::GenerationRequest;
 
-use rusqlite::{Connection, Result};
+use rusqlite::{Connection, Result, named_params};
 
 use regex::Regex;
 
 use sentencex::segment;
 
-use ytt::YouTubeTranscript;
+use ytt::{TranscriptResponse, YouTubeTranscript};
 
 use clap::{Parser, Subcommand, ValueEnum};
 #[derive(Parser)]
@@ -129,6 +129,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             panic!("we failed to create the table transcript");
         }
     }
+    // create ai transcript tables
+    let res_for_ai_transcript_table = check_if_tables_exist(&con, "ai_transcript")
+        .expect("failed to check table for ai_transcript");
+    if !res_for_ai_transcript_table {
+        create_table_ai_transcript(&con, "ai_transcript")
+            .expect("failet to add table ai_transcript");
+        let res_for_video_table = check_if_tables_exist(&con, "ai_transcript")
+            .expect("failed to check table ai_transcript ");
+        if !res_for_video_table {
+            panic!("we failed to create the table ai_transcript ");
+        }
+    }
     // some sort of checking to see if lama installed
     if !check_if_ollama_installed() {
         eprint!("ollama not installed, install ollama please");
@@ -157,14 +169,65 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(youtube_link) = cli.link.as_deref() {
         let vid_id = parse_vid_id_from_youtube_link(youtube_link.to_string().clone());
-        insert_new_video_via_link(&con, youtube_link.to_string().clone())
-            .expect("failed to insert a value");
+        // before we fetch using the api lets check our database for the video
+        //
+        // if the video exist within our database, lets check if we have the transcript for it
+        //
+        // if we have the transcript for it lets check if we have an ai_transcript for item
+        //
+        // if we have the ai_transcript print it out to the user and end the program
+        match check_if_video_exist_in_video_table(&con, vid_id.clone()) {
+            Ok(row) => {
+                println!("{row}, not a new video, so we wont insert a new video");
+                // if the video exist within our database, lets check if we have the transcript for it
+                // use the video_id to search the transcript database
+                match fetch_ai_transcript_body_using_video_id(&con, row) {
+                    Ok(body) => {
+                        // im thinking here maybe we can prompt the user
+                        // if they would like regenerate another propmt instead
+                        println!("{body}");
+                        process::exit(0);
+                    }
+                    Err(_err) => {
+                        println!(
+                            "this should not happen because where there exist a video, a ai transcript exist"
+                        );
+                    }
+                }
+            }
+            Err(_err) => {
+                println!(
+                    "wow a new video, so lets insert it. this is the first print, failed to find a video"
+                );
+            }
+        }
         let api = YouTubeTranscript::new();
+        // before we fetch the transcript using the api
+        // lets check our database if it exists for our transcript via the video
+        // honestly longest part of this whole app is generating readable transcript
+        // so lets change the schema of the transcript database to also store ai generated
+        // transcript
         let video_id = YouTubeTranscript::extract_video_id(youtube_link)?;
         let transcript = api.fetch_transcript(&video_id, Some(vec!["en"])).await?;
         let mut buf = String::new();
-        for item in transcript.transcript {
+        for item in transcript.transcript.clone() {
             buf += &(item.text + " ");
+        }
+        // check before inserting new video
+        match check_if_video_exist_in_video_table(&con, vid_id.clone()) {
+            Ok(row) => println!("{row}, not a new video, so we wont insert a new video"),
+            Err(err) => {
+                println!("wow a new video, so lets insert it");
+                insert_new_video_via_link(&con, youtube_link.to_string().clone())
+                    .expect("failed to insert a value");
+            }
+        }
+        // create the transcript text for video if it dont not exist
+        if let Err(err) = check_if_transcript_exists_in_transcript_table(&con, &transcript) {
+            insert_new_transcript_for_vid_id(&con, buf.clone(), vid_id.clone(), &transcript)
+                .expect("failed to insert transcript");
+        } else {
+            println!("transcript exist so lets not add");
         }
 
         let ollama = Ollama::default();
@@ -186,8 +249,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .generate(GenerationRequest::new(chosen_model, prompt))
             .await;
 
+        let transcript_id = check_if_transcript_exists_in_transcript_table(&con, &transcript)
+            .expect("we failed to get transcript id in main before ai check");
+        // here lets check if we have generated an ai_transcript already
         match res {
-            Ok(res) => println!("{}", res.response),
+            Ok(res) => {
+                if let Err(err) =
+                    check_if_ai_transcript_exists_in_ai_transcript_table(&con, transcript_id)
+                {
+                    println!(
+                        "we havent generated a ai transcript for this video, so lets add it too table"
+                    );
+                    insert_new_ai_generated_transcript_for_vid_id(
+                        &con,
+                        res.response.to_string().clone(),
+                        vid_id,
+                        &transcript,
+                    )
+                    .expect("failed to insert new ai_transcript");
+                } else {
+                    println!("ai_transcript exist so lets not add");
+                }
+            }
             Err(err) => eprintln!("{err}"),
         }
     }
@@ -299,6 +382,20 @@ fn create_table_transcript(con: &Connection, table_name: &str) -> Result<()> {
     }
     Ok(())
 }
+fn create_table_ai_transcript(con: &Connection, table_name: &str) -> Result<()> {
+    let sql = "Create TABLE ".to_owned()
+        + table_name
+        + "(id INTEGER PRIMARY KEY,
+        video_id INTEGER REFERENCES video(id),
+        transcript_id INTEGER REFERENCES transrcipt(id),
+        body TEXT NOT NULL,
+        language NEXT NOT NULL);";
+    match con.execute(&sql, ()) {
+        Ok(updated) => println!("{} rows were updated", updated),
+        Err(err) => println!("update failed: {}", err),
+    }
+    Ok(())
+}
 // insert via link
 fn insert_new_video_via_link(con: &Connection, video_link: String) -> Result<()> {
     // parse video link for vid id
@@ -311,10 +408,116 @@ fn insert_new_video_via_link(con: &Connection, video_link: String) -> Result<()>
     }
     Ok(())
 }
+fn insert_new_transcript_for_vid_id(
+    con: &Connection,
+    body: String,
+    vid_id: String,
+    transcript_response: &TranscriptResponse,
+) -> Result<()> {
+    let vid_id_int = check_if_video_exist_in_video_table(con, vid_id)
+        .expect("failed to get vid id in transcript function");
+    let title = transcript_response
+        .title
+        .clone()
+        .expect("failed to get title");
+    let language = transcript_response.language.clone();
+    let sql = "INSERT INTO transcript (video_id, title, body,language)
+        VALUES(:video_id,:title,:body,:language);";
+    match con.execute(
+        sql,
+        named_params! {
+            ":video_id": vid_id_int,
+            ":title": title,
+            ":body": body,
+            ":language": language,
+        },
+    ) {
+        Ok(updated) => println!("{} rows were updated", updated),
+        Err(err) => println!("update failed in insert transcript: {}", err),
+    }
+    Ok(())
+}
+fn insert_new_ai_generated_transcript_for_vid_id(
+    con: &Connection,
+    body: String,
+    vid_id: String,
+    transcript_response: &TranscriptResponse,
+) -> Result<()> {
+    let vid_id_int = check_if_video_exist_in_video_table(con, vid_id)
+        .expect("failed to get vid id in transcript function");
+    let transcript_id_int =
+        check_if_transcript_exists_in_transcript_table(con, transcript_response)
+            .expect("failed to get trascript id in ai_transcript function");
+    let language = transcript_response.language.clone();
+    let sql = "INSERT INTO ai_transcript (video_id,transcript_id, body,language)
+        VALUES(:video_id,:transcript_id,:body,:language);";
+    match con.execute(
+        sql,
+        named_params! {
+            ":video_id": vid_id_int,
+            ":transcript_id": transcript_id_int,
+            ":body": body,
+            ":language": language,
+        },
+    ) {
+        Ok(updated) => println!("{} rows were updated", updated),
+        Err(err) => println!("update failed in insert transcript: {}", err),
+    }
+    Ok(())
+}
 fn parse_vid_id_from_youtube_link(video_link: String) -> String {
     // video link will be https://www.youtube.com/watch?v=<vid_id>
     let re = Regex::new(r"https://www.youtube.com/watch\?v=(.{11})").unwrap();
     let hay = &video_link;
     let caps = re.captures(hay).unwrap();
     caps[1].to_string()
+}
+fn check_if_video_exist_in_video_table(con: &Connection, vid_id: String) -> Result<i32> {
+    con.query_row(
+        "SELECT id FROM video WHERE video_id = :video_id",
+        named_params! {":video_id":&vid_id},
+        |row| row.get::<_, i32>(0),
+    )
+}
+fn check_if_transcript_exists_in_transcript_table(
+    con: &Connection,
+    transcript_response: &TranscriptResponse,
+) -> Result<i32> {
+    let title = transcript_response
+        .title
+        .clone()
+        .expect("failed to get title");
+    let language = transcript_response.language.clone();
+    con.query_row(
+        "SELECT id FROM transcript WHERE title = :title AND language = :language",
+        named_params! {":title":title,":language":language},
+        |row| row.get::<_, i32>(0),
+    )
+}
+fn check_if_ai_transcript_exists_in_ai_transcript_table(
+    con: &Connection,
+    transcript_id: i32,
+) -> Result<i32> {
+    con.query_row(
+        "SELECT id FROM ai_transcript WHERE transcript_id = :transcript_id",
+        named_params! {":transcript_id":transcript_id},
+        |row| row.get::<_, i32>(0),
+    )
+}
+fn check_if_ai_transcript_exists_in_ai_transcript_table_via_vid_id(
+    con: &Connection,
+    video_id: i32,
+) -> Result<i32> {
+    con.query_row(
+        "SELECT id FROM ai_transcript WHERE video_id = :video_id",
+        named_params! {":video_id":video_id},
+        |row| row.get::<_, i32>(0),
+    )
+}
+fn fetch_ai_transcript_body_using_video_id(con: &Connection, video_id: i32) -> Result<String> {
+    con.query_row(
+        "SELECT body FROM ai_transcript WHERE video_id = :video_id",
+        named_params! {":video_id":video_id},
+        |row| row.get::<_, String>(0),
+    )
 }
