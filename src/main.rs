@@ -21,6 +21,7 @@ use ytt::{TranscriptResponse, YouTubeTranscript};
 use clap::{Parser, Subcommand, ValueEnum};
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
+/// A command line utility that generates articles from youtube videos. 
 struct Cli {
     // /// sets file to parse
     // #[arg(short, long, value_name = "FILE")]
