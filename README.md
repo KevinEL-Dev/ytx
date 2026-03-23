@@ -6,7 +6,8 @@ ytx is a command line tool that converts YouTube transcripts into readable artic
 
 Second run on same link
 
-![ytx live demo second run](assets/ytx_live_demo_second_run.gif)
+<!-- ![ytx live demo second run](assets/ytx_live_demo_second_run.gif) -->
+<img src="assets/ytx_live_demo_second_run" width="250" height="250"/>
 
 ## Installation
 cargo install ytx
