@@ -22,13 +22,13 @@ use clap::{Parser, Subcommand, ValueEnum};
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
-    /// sets file to parse
-    #[arg(short, long, value_name = "FILE")]
-    file_path: Option<String>,
+    // /// sets file to parse
+    // #[arg(short, long, value_name = "FILE")]
+    // file_path: Option<String>,
     /// sets youtube_link to fetch
     #[arg(short, long, value_name = "YOUTUBELINK")]
     link: Option<String>,
-
+    /// sets ollama model to generate readable transcript
     #[arg(short, long, value_enum, value_name = "MODEL")]
     model: Option<Model>,
     /// Turn debugging information on
@@ -46,14 +46,11 @@ enum Model {
     Qwen3,
     /// Model type glm-5:cloud
     Glm5,
+    /// Local Model glm-4.7-flash
+    Glm4flash,
 }
 #[derive(Subcommand)]
 enum Commands {
-    /// does testing things
-    Test {
-        #[arg(short, long)]
-        list: bool,
-    },
 }
 #[cfg(test)]
 mod tests {
@@ -147,34 +144,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         panic!();
     }
 
-    if let Some(config_path) = cli.file_path.as_deref() {
-        match get_file_contents(config_path) {
-            Ok(buf) => {
-                segment_sentences(buf.replace("\n", " "));
-
-                let ollama = Ollama::default();
-
-                let model = "kimi-k2.5:cloud".to_string();
-                let prompt = buf;
-
-                let res = ollama.generate(GenerationRequest::new(model, prompt)).await;
-
-                match res {
-                    Ok(res) => println!("{}", res.response),
-                    Err(err) => eprintln!("{err}"),
-                }
-            }
-            Err(err) => eprintln!("{err}"),
-        }
-    }
+    // if let Some(config_path) = cli.file_path.as_deref() {
+    //     match get_file_contents(config_path) {
+    //         Ok(buf) => {
+    //             segment_sentences(buf.replace("\n", " "));
+    //
+    //             let ollama = Ollama::default();
+    //
+    //             let model = "kimi-k2.5:cloud".to_string();
+    //             let prompt = buf;
+    //
+    //             let res = ollama.generate(GenerationRequest::new(model, prompt)).await;
+    //
+    //             match res {
+    //                 Ok(res) => println!("{}", res.response),
+    //                 Err(err) => eprintln!("{err}"),
+    //             }
+    //         }
+    //         Err(err) => eprintln!("{err}"),
+    //     }
+    // }
     if let Some(youtube_link) = cli.link.as_deref() {
         let vid_id = parse_vid_id_from_youtube_link(youtube_link.to_string().clone());
         // before we fetch using the api lets check our database for the video
         //
         // if the video exist within our database, lets check if we have the transcript for it
-        //
-        // if we have the transcript for it lets check if we have an ai_transcript for item
-        //
         // if we have the ai_transcript print it out to the user and end the program
         match check_if_video_exist_in_video_table(&con, vid_id.clone()) {
             Ok(row) => {
@@ -196,96 +190,88 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             Err(_err) => {
-                println!(
-                    "wow a new video, so lets insert it. this is the first print, failed to find a video"
-                );
-            }
-        }
-        let api = YouTubeTranscript::new();
-        // before we fetch the transcript using the api
-        // lets check our database if it exists for our transcript via the video
-        // honestly longest part of this whole app is generating readable transcript
-        // so lets change the schema of the transcript database to also store ai generated
-        // transcript
-        let video_id = YouTubeTranscript::extract_video_id(youtube_link)?;
-        let transcript = api.fetch_transcript(&video_id, Some(vec!["en"])).await?;
-        let mut buf = String::new();
-        for item in transcript.transcript.clone() {
-            buf += &(item.text + " ");
-        }
-        // check before inserting new video
-        match check_if_video_exist_in_video_table(&con, vid_id.clone()) {
-            Ok(row) => println!("{row}, not a new video, so we wont insert a new video"),
-            Err(err) => {
-                println!("wow a new video, so lets insert it");
-                insert_new_video_via_link(&con, youtube_link.to_string().clone())
-                    .expect("failed to insert a value");
-            }
-        }
-        // create the transcript text for video if it dont not exist
-        if let Err(err) = check_if_transcript_exists_in_transcript_table(&con, &transcript) {
-            insert_new_transcript_for_vid_id(&con, buf.clone(), vid_id.clone(), &transcript)
-                .expect("failed to insert transcript");
-        } else {
-            println!("transcript exist so lets not add");
-        }
-
-        let ollama = Ollama::default();
-
-        let mut chosen_model = String::new();
-        if let Some(model) = cli.model.as_ref() {
-            match model {
-                Model::KimiK2 => chosen_model = "kimi-k2.5:cloud".to_string(),
-                Model::Qwen3 => chosen_model = "qwen3.5:cloud".to_string(),
-                Model::Glm5 => chosen_model = "glm-5:cloud".to_string(),
-            }
-        } else {
-            chosen_model = "kimi-k2.5:cloud".to_string();
-        }
-        let prompt = buf
-            + "This is a youtube transcript, turn it into a readable article. Maintain the authors style.";
-
-        let res = ollama
-            .generate(GenerationRequest::new(chosen_model, prompt))
-            .await;
-
-        let transcript_id = check_if_transcript_exists_in_transcript_table(&con, &transcript)
-            .expect("we failed to get transcript id in main before ai check");
-        // here lets check if we have generated an ai_transcript already
-        match res {
-            Ok(res) => {
-                if let Err(err) =
-                    check_if_ai_transcript_exists_in_ai_transcript_table(&con, transcript_id)
-                {
-                    println!(
-                        "we havent generated a ai transcript for this video, so lets add it too table"
-                    );
-                    insert_new_ai_generated_transcript_for_vid_id(
-                        &con,
-                        res.response.to_string().clone(),
-                        vid_id,
-                        &transcript,
-                    )
-                    .expect("failed to insert new ai_transcript");
+                let api = YouTubeTranscript::new();
+                // before we fetch the transcript using the api
+                // lets check our database if it exists for our transcript via the video
+                // honestly longest part of this whole app is generating readable transcript
+                // so lets change the schema of the transcript database to also store ai generated
+                // transcript
+                let video_id = YouTubeTranscript::extract_video_id(youtube_link)?;
+                let transcript = api.fetch_transcript(&video_id, Some(vec!["en"])).await?;
+                let mut buf = String::new();
+                for item in transcript.transcript.clone() {
+                    buf += &(item.text + " ");
+                }
+                // check before inserting new video
+                match check_if_video_exist_in_video_table(&con, vid_id.clone()) {
+                    Ok(row) => println!("{row}, not a new video, so we wont insert a new video"),
+                    Err(_err) => {
+                        println!("wow a new video, so lets insert it");
+                        insert_new_video_via_link(&con, youtube_link.to_string().clone())
+                            .expect("failed to insert a value");
+                    }
+                }
+                // create the transcript text for video if it dont not exist
+                if let Err(_err) = check_if_transcript_exists_in_transcript_table(&con, &transcript) {
+                    insert_new_transcript_for_vid_id(&con, buf.clone(), vid_id.clone(), &transcript)
+                        .expect("failed to insert transcript");
                 } else {
-                    println!("ai_transcript exist so lets not add");
+                    println!("transcript exist so lets not add");
+                }
+
+                let ollama = Ollama::default();
+
+                let mut chosen_model = String::new();
+                if let Some(model) = cli.model.as_ref() {
+                    match model {
+                        Model::KimiK2 => chosen_model = "kimi-k2.5:cloud".to_string(),
+                        Model::Qwen3 => chosen_model = "qwen3.5:cloud".to_string(),
+                        Model::Glm5 => chosen_model = "glm-5:cloud".to_string(),
+                        Model::Glm4flash => chosen_model = "glm-4.7-flash".to_string()
+                    }
+                } else {
+                    chosen_model = "kimi-k2.5:cloud".to_string();
+                }
+                let prompt = buf
+                    + "This is a youtube transcript, turn it into a readable article. Maintain the authors style.";
+
+                let res = ollama
+                    .generate(GenerationRequest::new(chosen_model, prompt))
+                    .await;
+
+                let transcript_id = check_if_transcript_exists_in_transcript_table(&con, &transcript)
+                    .expect("we failed to get transcript id in main before ai check");
+                // here lets check if we have generated an ai_transcript already
+                match res {
+                    Ok(res) => {
+                        if let Err(_err) =
+                            check_if_ai_transcript_exists_in_ai_transcript_table(&con, transcript_id)
+                        {
+                            println!(
+                                "we havent generated a ai transcript for this video, so lets add it too table"
+                            );
+                            insert_new_ai_generated_transcript_for_vid_id(
+                                &con,
+                                res.response.to_string().clone(),
+                                vid_id,
+                                &transcript,
+                            )
+                            .expect("failed to insert new ai_transcript");
+                        } else {
+                            println!("ai_transcript exist so lets not add");
+                        }
+                    }
+                    // most likely an error with either auth for cloud models or local models not
+                    // installed
+                    Err(err) => eprintln!("{err}"),
                 }
             }
-            Err(err) => eprintln!("{err}"),
         }
     }
 
-    match &cli.command {
-        Some(Commands::Test { list }) => {
-            if *list {
-                println!("Printing testing lists...");
-            } else {
-                print!("not printing testing lists...");
-            }
-        }
-        None => {}
-    }
-
+    // match &cli.command {
+    //     None => {}
+    // }
     Ok(())
 }
 fn get_file_contents(file_path: &str) -> io::Result<String> {
