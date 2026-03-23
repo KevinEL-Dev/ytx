@@ -80,24 +80,25 @@ mod tests {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     if let Some(res) = check_if_data_dir_exist("ytx".to_string()) {
-        match res {
-            true => println!("the path exists for our data lets go"),
-            // we should create the directory  for our user
-            false => {
-                println!("the path does not exist, welcome new user");
-                if let Some(data_path) = return_data_dir("ytx".to_string()) {
-                    if let Err(err) = create_dir_for_cli(data_path) {
-                        eprint!(
-                            "something went wrong in creating the dir for our favorite cli tool. err: {err}"
-                        );
-                    } else {
-                        println!("yay we made the directory maybe")
-                    }
-                }
+        // match res {
+        //     true => println!("the path exists for our data lets go"),
+        //     // we should create the directory  for our user
+        //     false => {
+        //     }
+        // }
+        if !res {
+            if let Some(data_path) = return_data_dir("ytx".to_string()) {
+                if let Err(err) = create_dir_for_cli(data_path) {
+                    eprint!(
+                        "something went wrong in creating the dir for our favorite cli tool. err: {err}"
+                    );
+                    process::exit(1);
+                }                 
             }
         }
     } else {
-        println!("something went wrong in getting xdg directories")
+        println!("something went wrong in getting xdg directories");
+        process::exit(1);
     }
     // dir for cli should be created so lets create a connection to our db
     let app_name_path =
@@ -112,7 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let res_for_video_table =
             check_if_tables_exist(&con, "video").expect("failed to check table");
         if !res_for_video_table {
-            panic!("we failed to create the table name");
+            panic!("we failed to create the video table");
         }
     }
     // then create transcript tables
@@ -120,11 +121,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         check_if_tables_exist(&con, "transcript").expect("failed to check table");
     if !res_for_transcript_table {
         create_table_transcript(&con, "transcript").expect("failet to add table transcript");
-        let res_for_video_table =
-            check_if_tables_exist(&con, "transcript").expect("failed to check table");
-        if !res_for_video_table {
-            panic!("we failed to create the table transcript");
-        }
+        // let res_for_video_table =
+        //     check_if_tables_exist(&con, "transcript").expect("failed to check table");
+        // if !res_for_video_table {
+        //     panic!("we failed to create the table transcript");
+        // }
     }
     // create ai transcript tables
     let res_for_ai_transcript_table = check_if_tables_exist(&con, "ai_transcript")
@@ -132,11 +133,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !res_for_ai_transcript_table {
         create_table_ai_transcript(&con, "ai_transcript")
             .expect("failet to add table ai_transcript");
-        let res_for_video_table = check_if_tables_exist(&con, "ai_transcript")
-            .expect("failed to check table ai_transcript ");
-        if !res_for_video_table {
-            panic!("we failed to create the table ai_transcript ");
-        }
+        // let res_for_video_table = check_if_tables_exist(&con, "ai_transcript")
+        //     .expect("failed to check table ai_transcript ");
+        // if !res_for_video_table {
+        //     panic!("we failed to create the table ai_transcript ");
+        // }
     }
     // some sort of checking to see if lama installed
     if !check_if_ollama_installed() {
@@ -172,7 +173,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // if we have the ai_transcript print it out to the user and end the program
         match check_if_video_exist_in_video_table(&con, vid_id.clone()) {
             Ok(row) => {
-                println!("{row}, not a new video, so we wont insert a new video");
+                //println!("{row}, not a new video, so we wont insert a new video");
                 // if the video exist within our database, lets check if we have the transcript for it
                 // use the video_id to search the transcript database
                 match fetch_ai_transcript_body_using_video_id(&con, row) {
@@ -189,13 +190,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
+            // we havent seen this youtube video before
             Err(_err) => {
                 let api = YouTubeTranscript::new();
-                // before we fetch the transcript using the api
-                // lets check our database if it exists for our transcript via the video
-                // honestly longest part of this whole app is generating readable transcript
-                // so lets change the schema of the transcript database to also store ai generated
-                // transcript
                 let video_id = YouTubeTranscript::extract_video_id(youtube_link)?;
                 let transcript = api.fetch_transcript(&video_id, Some(vec!["en"])).await?;
                 let mut buf = String::new();
@@ -288,6 +285,7 @@ fn segment_sentences(text: String) {
         println!("{}. {}", i + 1, sentence);
     }
 }
+// this needs fixing as which can be different across platforms
 fn check_if_ollama_installed() -> bool {
     let output = Command::new("which")
         .arg("ollama")
@@ -305,7 +303,6 @@ fn check_if_ollama_installed() -> bool {
 }
 fn check_if_data_dir_exist(app_name: String) -> Option<bool> {
     if let Some(proj_dir) = ProjectDirs::from("", "", &app_name) {
-        println!("{:?}", proj_dir.config_dir());
         return Some(fs::metadata(proj_dir.config_dir()).is_ok());
     }
     None
@@ -327,7 +324,7 @@ fn remove_dir(dir_path: String) -> std::io::Result<()> {
 fn open_ytx_db(path: String) -> Result<Connection> {
     let new_path = path + "/ytx.db";
     let db = Connection::open(new_path)?;
-    println!("{}", db.is_autocommit());
+    //println!("{}", db.is_autocommit());
     Ok(db)
 }
 fn check_if_tables_exist(con: &Connection, table_name: &str) -> Result<bool> {
@@ -349,10 +346,12 @@ fn create_table_video(con: &Connection, table_name: &str) -> Result<()> {
         video_id TEXT NOT NULL UNIQUE,
         video_link TEXT NOT NULL UNIQUE);";
     match con.execute(&sql, ()) {
-        Ok(updated) => println!("{} rows were updated", updated),
-        Err(err) => println!("update failed: {}", err),
+        Ok(_updated) => Ok(()),
+        Err(err) => {
+            println!("update failed: {}", err);
+            process::exit(1);
+        },
     }
-    Ok(())
 }
 fn create_table_transcript(con: &Connection, table_name: &str) -> Result<()> {
     let sql = "Create TABLE ".to_owned()
@@ -363,10 +362,12 @@ fn create_table_transcript(con: &Connection, table_name: &str) -> Result<()> {
         body TEXT NOT NULL,
         language NEXT NOT NULL);";
     match con.execute(&sql, ()) {
-        Ok(updated) => println!("{} rows were updated", updated),
-        Err(err) => println!("update failed: {}", err),
+        Ok(_updated) => Ok(()),
+        Err(err) => {
+            println!("update failed: {}", err);
+            process::exit(1);
+        },
     }
-    Ok(())
 }
 fn create_table_ai_transcript(con: &Connection, table_name: &str) -> Result<()> {
     let sql = "Create TABLE ".to_owned()
@@ -377,10 +378,12 @@ fn create_table_ai_transcript(con: &Connection, table_name: &str) -> Result<()> 
         body TEXT NOT NULL,
         language NEXT NOT NULL);";
     match con.execute(&sql, ()) {
-        Ok(updated) => println!("{} rows were updated", updated),
-        Err(err) => println!("update failed: {}", err),
+        Ok(_updated) => Ok(()),
+        Err(err) => {
+            println!("update failed: {}", err);
+            process::exit(1);
+        },
     }
-    Ok(())
 }
 // insert via link
 fn insert_new_video_via_link(con: &Connection, video_link: String) -> Result<()> {
@@ -389,10 +392,12 @@ fn insert_new_video_via_link(con: &Connection, video_link: String) -> Result<()>
     let sql = "INSERT INTO video (video_id, video_link)
         VALUES(:video_id,:video_link);";
     match con.execute(sql, &[(":video_id", &vid_id), (":video_link", &video_link)]) {
-        Ok(updated) => println!("{} rows were updated", updated),
-        Err(err) => println!("update failed: {}", err),
+        Ok(_updated) => Ok(()),
+        Err(err) => {
+            println!("insert failed in for new video: {}", err);
+            process::exit(1);
+        },
     }
-    Ok(())
 }
 fn insert_new_transcript_for_vid_id(
     con: &Connection,
@@ -418,10 +423,12 @@ fn insert_new_transcript_for_vid_id(
             ":language": language,
         },
     ) {
-        Ok(updated) => println!("{} rows were updated", updated),
-        Err(err) => println!("update failed in insert transcript: {}", err),
+        Ok(_updated) => Ok(()),
+        Err(err) => {
+            println!("update failed in insert transcript: {}", err);
+            process::exit(1);
+        },
     }
-    Ok(())
 }
 fn insert_new_ai_generated_transcript_for_vid_id(
     con: &Connection,
@@ -446,10 +453,12 @@ fn insert_new_ai_generated_transcript_for_vid_id(
             ":language": language,
         },
     ) {
-        Ok(updated) => println!("{} rows were updated", updated),
-        Err(err) => println!("update failed in insert transcript: {}", err),
+        Ok(_updated) => Ok(()),
+        Err(err) => {
+            println!("update failed in insert ai_transcript: {}", err);
+            process::exit(1);
+        },
     }
-    Ok(())
 }
 fn parse_vid_id_from_youtube_link(video_link: String) -> String {
     // video link will be https://www.youtube.com/watch?v=<vid_id>
