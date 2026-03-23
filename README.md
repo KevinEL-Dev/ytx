@@ -36,7 +36,6 @@ ytx -l "https://www.youtube.com/watch?v=VIDEO_ID --model glm4flash"
 - Fetch YouTube transcripts
 - Convert transcripts into readable articles
 - Supports Ollama local and cloud models
-- Supports cloud models
 - Caches transcripts for faster reruns
 ## How It Works
 1. Fetch transcript using the ytt crate
@@ -45,3 +44,8 @@ ytx -l "https://www.youtube.com/watch?v=VIDEO_ID --model glm4flash"
 4. Article is saved locally
 5. Transcript is cached to speed up future runs
 
+## Future Features
+
+[] search transcripts based on title of youtube video
+[] support different file type outputs like pdf or md
+[] tui reader built in ytx
