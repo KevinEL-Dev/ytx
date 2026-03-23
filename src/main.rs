@@ -242,9 +242,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Err(_err) =
                             check_if_ai_transcript_exists_in_ai_transcript_table(&con, transcript_id)
                         {
-                            println!(
-                                "we havent generated a ai transcript for this video, so lets add it too table"
-                            );
+                            // println!(
+                            //     "we havent generated a ai transcript for this video, so lets add it too table"
+                            // );
                             insert_new_ai_generated_transcript_for_vid_id(
                                 &con,
                                 res.response.to_string().clone(),
@@ -252,6 +252,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 &transcript,
                             )
                             .expect("failed to insert new ai_transcript");
+                            print!("{}",res.response);
                         } else {
                             println!("ai_transcript exist so lets not add");
                         }
