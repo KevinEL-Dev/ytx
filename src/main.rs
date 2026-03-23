@@ -86,16 +86,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         //     false => {
         //     }
         // }
-        if !res {
-            if let Some(data_path) = return_data_dir("ytx".to_string()) {
-                if let Err(err) = create_dir_for_cli(data_path) {
+        if !res 
+            && let Some(data_path) = return_data_dir("ytx".to_string()) 
+                && let Err(err) = create_dir_for_cli(data_path) {
                     eprint!(
                         "something went wrong in creating the dir for our favorite cli tool. err: {err}"
                     );
                     process::exit(1);
                 }                 
-            }
-        }
     } else {
         println!("something went wrong in getting xdg directories");
         process::exit(1);
