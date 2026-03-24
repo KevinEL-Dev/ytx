@@ -21,7 +21,7 @@ use ytt::{TranscriptResponse, YouTubeTranscript};
 use clap::{Parser, Subcommand, ValueEnum};
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
-/// A command line utility that generates articles from youtube videos. 
+/// A command line utility that generates articles from youtube videos.
 struct Cli {
     // /// sets file to parse
     // #[arg(short, long, value_name = "FILE")]
@@ -54,19 +54,19 @@ enum Model {
 enum Commands {
     /// List out saved transcripts
     List,
-    /// Open a transcript where identifier is either an Id or Article title 
-    Open{
+    /// Open a transcript where identifier is either an Id or Article title
+    Open {
         #[arg(value_parser = get_identifier)]
         identifier: Identifier,
-    }
+    },
 }
-#[derive(Debug,Clone,PartialEq,Eq,PartialOrd,Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum Identifier {
     Id(i32),
     Title(String),
 }
-#[derive(Debug,Clone)]
-struct Transcript{
+#[derive(Debug, Clone)]
+struct Transcript {
     video_id: i32,
     title: String,
 }
@@ -104,14 +104,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         //     false => {
         //     }
         // }
-        if !res 
-            && let Some(data_path) = return_data_dir("ytx".to_string()) 
-                && let Err(err) = create_dir_for_cli(data_path) {
-                    eprint!(
-                        "something went wrong in creating the dir for our favorite cli tool. err: {err}"
-                    );
-                    process::exit(1);
-                }                 
+        if !res
+            && let Some(data_path) = return_data_dir("ytx".to_string())
+            && let Err(err) = create_dir_for_cli(data_path)
+        {
+            eprint!(
+                "something went wrong in creating the dir for our favorite cli tool. err: {err}"
+            );
+            process::exit(1);
+        }
     } else {
         println!("something went wrong in getting xdg directories");
         process::exit(1);
@@ -225,9 +226,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 // create the transcript text for video if it dont not exist
-                if let Err(_err) = check_if_transcript_exists_in_transcript_table(&con, &transcript) {
-                    insert_new_transcript_for_vid_id(&con, buf.clone(), vid_id.clone(), &transcript)
-                        .expect("failed to insert transcript");
+                if let Err(_err) = check_if_transcript_exists_in_transcript_table(&con, &transcript)
+                {
+                    insert_new_transcript_for_vid_id(
+                        &con,
+                        buf.clone(),
+                        vid_id.clone(),
+                        &transcript,
+                    )
+                    .expect("failed to insert transcript");
                 } else {
                     println!("transcript exist so lets not add");
                 }
@@ -240,7 +247,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Model::KimiK2 => chosen_model = "kimi-k2.5:cloud".to_string(),
                         Model::Qwen3 => chosen_model = "qwen3.5:cloud".to_string(),
                         Model::Glm5 => chosen_model = "glm-5:cloud".to_string(),
-                        Model::Glm4flash => chosen_model = "glm-4.7-flash".to_string()
+                        Model::Glm4flash => chosen_model = "glm-4.7-flash".to_string(),
                     }
                 } else {
                     chosen_model = "kimi-k2.5:cloud".to_string();
@@ -252,14 +259,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .generate(GenerationRequest::new(chosen_model, prompt))
                     .await;
 
-                let transcript_id = check_if_transcript_exists_in_transcript_table(&con, &transcript)
-                    .expect("we failed to get transcript id in main before ai check");
+                let transcript_id =
+                    check_if_transcript_exists_in_transcript_table(&con, &transcript)
+                        .expect("we failed to get transcript id in main before ai check");
                 // here lets check if we have generated an ai_transcript already
                 match res {
                     Ok(res) => {
-                        if let Err(_err) =
-                            check_if_ai_transcript_exists_in_ai_transcript_table(&con, transcript_id)
-                        {
+                        if let Err(_err) = check_if_ai_transcript_exists_in_ai_transcript_table(
+                            &con,
+                            transcript_id,
+                        ) {
                             // println!(
                             //     "we havent generated a ai transcript for this video, so lets add it too table"
                             // );
@@ -270,7 +279,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 &transcript,
                             )
                             .expect("failed to insert new ai_transcript");
-                            print!("{}",res.response);
+                            print!("{}", res.response);
                         } else {
                             println!("ai_transcript exist so lets not add");
                         }
@@ -283,33 +292,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-     match &cli.command {
-        Some(Commands::List) =>{
-            if let Err(err) = get_all_videos(&con){
+    match &cli.command {
+        Some(Commands::List) => {
+            if let Err(err) = get_all_videos(&con) {
                 println!("something went wrong fetching your transcripts");
                 eprintln!("{err}");
             }
         }
-        Some(Commands::Open{identifier}) => {
+        Some(Commands::Open { identifier }) => {
             match identifier {
-                Identifier::Id(i) => {
-                    match get_transcript_body_from_video_id(&con,*i){
-                        Ok(body) => println!("{}",body),
-                        Err(err) => println!("did not find a transcript with the id. {err}"),
-                    }
+                Identifier::Id(i) => match get_transcript_body_from_video_id(&con, *i) {
+                    Ok(body) => println!("{}", body),
+                    Err(err) => println!("did not find a transcript with the id. {err}"),
                 },
                 // little tricky, not exactly sure how searching via title will go, will return the
                 // most similar title to what the user entered?
                 Identifier::Title(title) => {
-                    println!("title: {}",title);
-                    if let Err(err) = get_transcript_body_from_title(&con,title.to_string()){
+                    println!("title: {}", title);
+                    if let Err(err) = get_transcript_body_from_title(&con, title.to_string()) {
                         eprintln!("{err}");
                     };
-                },
+                }
             }
         }
-         None => {}
-     }
+        None => {}
+    }
     Ok(())
 }
 fn get_file_contents(file_path: &str) -> io::Result<String> {
@@ -391,7 +398,7 @@ fn create_table_video(con: &Connection, table_name: &str) -> Result<()> {
         Err(err) => {
             println!("update failed: {}", err);
             process::exit(1);
-        },
+        }
     }
 }
 fn create_table_transcript(con: &Connection, table_name: &str) -> Result<()> {
@@ -407,7 +414,7 @@ fn create_table_transcript(con: &Connection, table_name: &str) -> Result<()> {
         Err(err) => {
             println!("update failed: {}", err);
             process::exit(1);
-        },
+        }
     }
 }
 fn create_table_ai_transcript(con: &Connection, table_name: &str) -> Result<()> {
@@ -423,7 +430,7 @@ fn create_table_ai_transcript(con: &Connection, table_name: &str) -> Result<()> 
         Err(err) => {
             println!("update failed: {}", err);
             process::exit(1);
-        },
+        }
     }
 }
 // insert via link
@@ -437,7 +444,7 @@ fn insert_new_video_via_link(con: &Connection, video_link: String) -> Result<()>
         Err(err) => {
             println!("insert failed in for new video: {}", err);
             process::exit(1);
-        },
+        }
     }
 }
 fn insert_new_transcript_for_vid_id(
@@ -468,7 +475,7 @@ fn insert_new_transcript_for_vid_id(
         Err(err) => {
             println!("update failed in insert transcript: {}", err);
             process::exit(1);
-        },
+        }
     }
 }
 fn insert_new_ai_generated_transcript_for_vid_id(
@@ -498,7 +505,7 @@ fn insert_new_ai_generated_transcript_for_vid_id(
         Err(err) => {
             println!("update failed in insert ai_transcript: {}", err);
             process::exit(1);
-        },
+        }
     }
 }
 fn parse_vid_id_from_youtube_link(video_link: String) -> String {
@@ -557,44 +564,44 @@ fn fetch_ai_transcript_body_using_video_id(con: &Connection, video_id: i32) -> R
         |row| row.get::<_, String>(0),
     )
 }
-fn get_all_videos(con: &Connection) -> Result<()>{
+fn get_all_videos(con: &Connection) -> Result<()> {
     let mut stmt = con.prepare("SELECT title, video_id FROM transcript")?;
-    let transcript_iter = stmt.query_map([],|row| {
-        Ok(Transcript{
+    let transcript_iter = stmt.query_map([], |row| {
+        Ok(Transcript {
             title: row.get(0)?,
             video_id: row.get(1)?,
         })
     })?;
     for transcript in transcript_iter {
         let handled_transcript = transcript.unwrap();
-        println!("{}  {}",handled_transcript.video_id,handled_transcript.title);
+        println!(
+            "{}  {}",
+            handled_transcript.video_id, handled_transcript.title
+        );
     }
     Ok(())
 }
-fn get_identifier(s: &str) -> Result<Identifier,String> {
+fn get_identifier(s: &str) -> Result<Identifier, String> {
     // attempt to parse an int from the user input
     // if int is successful return Identifier(i32)
     let identifier_int = s.trim().parse::<i32>();
     match identifier_int {
         Ok(int) => Ok(Identifier::Id(int as i32)),
-        Err(_err) => Ok(Identifier::Title(s.to_string()))
+        Err(_err) => Ok(Identifier::Title(s.to_string())),
     }
 }
-fn get_transcript_body_from_video_id(
-    con: &Connection,
-    video_id: i32,
-) -> Result<String> {
+fn get_transcript_body_from_video_id(con: &Connection, video_id: i32) -> Result<String> {
     con.query_row(
         "SELECT body FROM ai_transcript WHERE video_id = :video_id",
         named_params! {":video_id":video_id},
         |row| row.get::<_, String>(0),
     )
 }
-fn get_transcript_body_from_title(con: &Connection,title: String) -> Result<()>{
+fn get_transcript_body_from_title(con: &Connection, title: String) -> Result<()> {
     let mut stmt = con.prepare("SELECT title, video_id FROM transcript WHERE title LIKE :title")?;
-    let title_param = format!("%{}%",title);
-    let title_iter = stmt.query_map(named_params! {":title":title_param},|row| {
-        Ok(Transcript{
+    let title_param = format!("%{}%", title);
+    let title_iter = stmt.query_map(named_params! {":title":title_param}, |row| {
+        Ok(Transcript {
             title: row.get(0)?,
             video_id: row.get(1)?,
         })
@@ -605,7 +612,28 @@ fn get_transcript_body_from_title(con: &Connection,title: String) -> Result<()>{
         collect.push(handled_transcript.clone());
         //println!("{}  {}",handled_transcript.video_id,handled_transcript.title);
     }
-    println!("size of found transcripts are {}",collect.len());
+    println!("size of found transcripts are {}", collect.len());
+    if collect.len() == 1 {
+        match get_transcript_body_from_video_id(&con, collect[0].video_id) {
+            Ok(body) => println!("{}", body),
+            Err(err) => println!("did not find a transcript with the id. {err}"),
+        }
+    } else {
+        println!("Multiple videos found please select one");
+        for i in 0..collect.len() {
+            println!("{}  {}", collect[i].video_id, collect[i].title);
+        }
+        println!("Choose a video id: ");
+        let mut choice = String::new();
+        io::stdin()
+            .read_line(&mut choice)
+            .expect("failed to read your input");
+        let parsed_user_choice = choice.trim().parse::<i32>().unwrap();
+        match get_transcript_body_from_video_id(&con, parsed_user_choice) {
+            Ok(body) => println!("{}", body),
+            Err(err) => println!("did not find a transcript with the id. {err}"),
+        }
+    }
     // if the we found one that means we just print that one body
     //
     // else we need to prompt the user to select a transcript
