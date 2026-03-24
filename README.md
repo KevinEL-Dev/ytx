@@ -31,11 +31,11 @@ ytx -l "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 Choose a cloud ollama model:
 ```
-ytx -l "https://www.youtube.com/watch?v=VIDEO_ID --model kimi-k2"
+ytx -l "https://www.youtube.com/watch?v=VIDEO_ID" --model kimi-k2"
 ```
 Choose a local ollama model:
 ```
-ytx -l "https://www.youtube.com/watch?v=VIDEO_ID --model glm4flash"
+ytx -l "https://www.youtube.com/watch?v=VIDEO_ID" --model glm4flash"
 ```
 ## Features
 - Fetch YouTube transcripts
