@@ -9,8 +9,9 @@ Second run on same link
 ![ytx live demo second run](assets/second_run.gif)
 
 ## Installation
+```
 cargo install ytx
-
+```
 ## On second run
 ytx will cache transcripts that have all ready been generated to improve speed.
 
