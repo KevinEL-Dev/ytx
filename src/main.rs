@@ -26,8 +26,8 @@ struct Cli {
     // /// sets file to parse
     // #[arg(short, long, value_name = "FILE")]
     // file_path: Option<String>,
-    /// sets youtube_link to fetch
-    #[arg(short, long, value_name = "YOUTUBELINK")]
+    /// sets url to fetch
+    #[arg(value_name = "url")]
     link: Option<String>,
     /// sets ollama model to generate readable transcript
     #[arg(short, long, value_enum, value_name = "MODEL")]
@@ -52,6 +52,23 @@ enum Model {
 }
 #[derive(Subcommand)]
 enum Commands {
+    /// List out saved transcripts
+    List,
+    /// Open a transcript where identifier is either an Id or Article title 
+    Open{
+        #[arg(value_parser = get_identifier)]
+        identifier: Identifier,
+    }
+}
+#[derive(Debug,Clone,PartialEq,Eq,PartialOrd,Ord)]
+enum Identifier {
+    Id(i32),
+    Title(String),
+}
+#[derive(Debug,Clone)]
+struct Transcript{
+    video_id: i32,
+    title: String,
 }
 #[cfg(test)]
 mod tests {
@@ -266,9 +283,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // match &cli.command {
-    //     None => {}
-    // }
+     match &cli.command {
+        Some(Commands::List) =>{
+            if let Err(err) = get_all_videos(&con){
+                println!("something went wrong fetching your transcripts");
+                eprintln!("{err}");
+            }
+        }
+        Some(Commands::Open{identifier}) => {
+            match identifier {
+                Identifier::Id(i) => {
+                    match get_transcript_body_from_video_id(&con,*i){
+                        Ok(body) => println!("{}",body),
+                        Err(err) => println!("did not find a transcript with the id. {err}"),
+                    }
+                },
+                // little tricky, not exactly sure how searching via title will go, will return the
+                // most similar title to what the user entered?
+                Identifier::Title(title) => {
+                    println!("title: {}",title);
+                    if let Err(err) = get_transcript_body_from_title(&con,title.to_string()){
+                        eprintln!("{err}");
+                    };
+                },
+            }
+        }
+         None => {}
+     }
     Ok(())
 }
 fn get_file_contents(file_path: &str) -> io::Result<String> {
@@ -515,4 +556,58 @@ fn fetch_ai_transcript_body_using_video_id(con: &Connection, video_id: i32) -> R
         named_params! {":video_id":video_id},
         |row| row.get::<_, String>(0),
     )
+}
+fn get_all_videos(con: &Connection) -> Result<()>{
+    let mut stmt = con.prepare("SELECT title, video_id FROM transcript")?;
+    let transcript_iter = stmt.query_map([],|row| {
+        Ok(Transcript{
+            title: row.get(0)?,
+            video_id: row.get(1)?,
+        })
+    })?;
+    for transcript in transcript_iter {
+        let handled_transcript = transcript.unwrap();
+        println!("{}  {}",handled_transcript.video_id,handled_transcript.title);
+    }
+    Ok(())
+}
+fn get_identifier(s: &str) -> Result<Identifier,String> {
+    // attempt to parse an int from the user input
+    // if int is successful return Identifier(i32)
+    let identifier_int = s.trim().parse::<i32>();
+    match identifier_int {
+        Ok(int) => Ok(Identifier::Id(int as i32)),
+        Err(_err) => Ok(Identifier::Title(s.to_string()))
+    }
+}
+fn get_transcript_body_from_video_id(
+    con: &Connection,
+    video_id: i32,
+) -> Result<String> {
+    con.query_row(
+        "SELECT body FROM ai_transcript WHERE video_id = :video_id",
+        named_params! {":video_id":video_id},
+        |row| row.get::<_, String>(0),
+    )
+}
+fn get_transcript_body_from_title(con: &Connection,title: String) -> Result<()>{
+    let mut stmt = con.prepare("SELECT title, video_id FROM transcript WHERE title LIKE :title")?;
+    let title_param = format!("%{}%",title);
+    let title_iter = stmt.query_map(named_params! {":title":title_param},|row| {
+        Ok(Transcript{
+            title: row.get(0)?,
+            video_id: row.get(1)?,
+        })
+    })?;
+    let mut collect: Vec<Transcript> = Vec::new();
+    for transcript in title_iter {
+        let handled_transcript = transcript.unwrap();
+        collect.push(handled_transcript.clone());
+        //println!("{}  {}",handled_transcript.video_id,handled_transcript.title);
+    }
+    println!("size of found transcripts are {}",collect.len());
+    // if the we found one that means we just print that one body
+    //
+    // else we need to prompt the user to select a transcript
+    Ok(())
 }
