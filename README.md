@@ -21,7 +21,7 @@ ytx utilizes ollama and its models to take youtube transcripts and make them rea
 ### Ollama install
 [head to ollama to install](https://ollama.com/)
 
-ytx currently has options to use 3 cloud models and 1 local model provided by ollama. To be able to use the cloud models you must have an account with ollama but if you have the local model installed you can select that to be your model of choice without needing an ollama account. Local models speed in generating / rewriting your readable transcripts can vary in depending on your hardware. Typically, the cloud models are much quicker.
+ytx currently has options to use 3 cloud models and 1 local model provided by ollama. To be able to use the cloud models you must have an account with ollama but if you have the local model installed you can select that to be your model of choice without needing an ollama account. Local models speed in generating / rewriting your readable transcripts can vary depending on your hardware. Typically, the cloud models are much quicker.
 
 ## Usage
 You can provide a provide a youtube video link.
