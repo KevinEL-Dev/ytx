@@ -46,8 +46,8 @@ ytx -l "https://www.youtube.com/watch?v=VIDEO_ID --model glm4flash"
 
 ## Future Features
 
-[] search transcripts based on title of youtube video
+- [] search transcripts based on title of youtube video
 
-[] support different file type outputs like pdf or md
+- [] support different file type outputs like pdf or md
 
-[] tui reader built in ytx
+- [] tui reader built in ytx
