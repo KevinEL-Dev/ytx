@@ -4,7 +4,7 @@ license = "MIT"
 authors = ["KevinEL-Dev <dev@zookfish.com>"]
 description = "A command line utility that generates articles from youtube videos"
 repository = "https://github.com/KevinEL-Dev/ytx"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
