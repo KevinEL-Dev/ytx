@@ -26,26 +26,30 @@ ytx currently has options to use 3 cloud models and 1 local model provided by ol
 ## Usage
 Generate an article from a Youtube video:
 
-```
+```bash
 ytx "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 Choose a cloud ollama model:
-```
+```bash
 ytx "https://www.youtube.com/watch?v=VIDEO_ID" --model kimi-k2"
 ```
 Choose a local ollama model:
-```
+```bash
 ytx "https://www.youtube.com/watch?v=VIDEO_ID" --model glm4flash"
 ```
 List saved articles
-```
+```bash
 ytx list
 ```
 Open a saved article by index or title:
 ```
 ytx open <index | title>
 ```
+Delete a saved article by index or title:
+```bash
+ytx delete <index | title>
 
+```
 ## Example Workflow
 
 Generate an article from a video:
@@ -60,12 +64,18 @@ Open an article:
 ```bash
 ytx open 1
 ```
+Delete an article:
+```bash
+ytx delete 1
+```
+
 ## Features
 - Fetch YouTube transcripts
 - Convert transcripts into readable articles
 - Supports Ollama local and cloud models
 - Caches transcripts for faster reruns
 - Search transcripts based on title of youtube video
+- Delete transcripts based on title or index
 ## How It Works
 1. Fetch transcript using the ytt crate
 2. Send transcript to selected Ollama model
