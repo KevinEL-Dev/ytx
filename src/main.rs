@@ -99,12 +99,6 @@ mod tests {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     if let Some(res) = check_if_data_dir_exist("ytx".to_string()) {
-        // match res {
-        //     true => println!("the path exists for our data lets go"),
-        //     // we should create the directory  for our user
-        //     false => {
-        //     }
-        // }
         if !res
             && let Some(data_path) = return_data_dir("ytx".to_string())
             && let Err(err) = create_dir_for_cli(data_path)
@@ -139,11 +133,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         check_if_tables_exist(&con, "transcript").expect("failed to check table");
     if !res_for_transcript_table {
         create_table_transcript(&con, "transcript").expect("failet to add table transcript");
-        // let res_for_video_table =
-        //     check_if_tables_exist(&con, "transcript").expect("failed to check table");
-        // if !res_for_video_table {
-        //     panic!("we failed to create the table transcript");
-        // }
     }
     // create ai transcript tables
     let res_for_ai_transcript_table = check_if_tables_exist(&con, "ai_transcript")
@@ -151,11 +140,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !res_for_ai_transcript_table {
         create_table_ai_transcript(&con, "ai_transcript")
             .expect("failet to add table ai_transcript");
-        // let res_for_video_table = check_if_tables_exist(&con, "ai_transcript")
-        //     .expect("failed to check table ai_transcript ");
-        // if !res_for_video_table {
-        //     panic!("we failed to create the table ai_transcript ");
-        // }
     }
     // some sort of checking to see if lama installed
     if !check_if_ollama_installed() {
@@ -188,10 +172,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // before we fetch using the api lets check our database for the video
         //
         // if the video exist within our database, lets check if we have the transcript for it
-        // if we have the ai_transcript print it out to the user and end the program
         match check_if_video_exist_in_video_table(&con, vid_id.clone()) {
             Ok(row) => {
-                //println!("{row}, not a new video, so we wont insert a new video");
                 // if the video exist within our database, lets check if we have the transcript for it
                 // use the video_id to search the transcript database
                 match fetch_ai_transcript_body_using_video_id(&con, row) {
@@ -221,7 +203,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match check_if_video_exist_in_video_table(&con, vid_id.clone()) {
                     Ok(row) => println!("{row}, not a new video, so we wont insert a new video"),
                     Err(_err) => {
-                        println!("wow a new video, so lets insert it");
                         insert_new_video_via_link(&con, youtube_link.to_string().clone())
                             .expect("failed to insert a value");
                     }
@@ -256,6 +237,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let prompt = buf
                     + "This is a youtube transcript, turn it into a readable article. Maintain the authors style.";
 
+                // how can i do one of those loading bars when complete?
+                println!("Generating article...");
                 let res = ollama
                     .generate(GenerationRequest::new(chosen_model, prompt))
                     .await;
@@ -270,9 +253,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             &con,
                             transcript_id,
                         ) {
-                            // println!(
-                            //     "we havent generated a ai transcript for this video, so lets add it too table"
-                            // );
                             insert_new_ai_generated_transcript_for_vid_id(
                                 &con,
                                 res.response.to_string().clone(),
@@ -280,8 +260,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 &transcript,
                             )
                             .expect("failed to insert new ai_transcript");
-                            print!("{}", res.response);
+                            println!("{}", res.response);
                         } else {
+                            // probably wont reach here
                             println!("ai_transcript exist so lets not add");
                         }
                     }
@@ -309,7 +290,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // little tricky, not exactly sure how searching via title will go, will return the
                 // most similar title to what the user entered?
                 Identifier::Title(title) => {
-                    println!("title: {}", title);
                     if let Err(err) = get_transcript_body_from_title(&con, title.to_string()) {
                         eprintln!("{err}");
                     };
@@ -320,7 +300,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     Ok(())
 }
-fn get_file_contents(file_path: &str) -> io::Result<String> {
+fn _get_file_contents(file_path: &str) -> io::Result<String> {
     let path = Path::new(file_path);
     let mut f = File::open(path)?;
     let mut buf = String::new();
@@ -328,7 +308,7 @@ fn get_file_contents(file_path: &str) -> io::Result<String> {
     Ok(buf)
 }
 // pass in a file/transcript to read
-fn segment_sentences(text: String) {
+fn _segment_sentences(text: String) {
     let senteces = segment("en", &text);
     for (i, sentence) in senteces.iter().enumerate() {
         println!("{}. {}", i + 1, sentence);
@@ -544,7 +524,7 @@ fn check_if_ai_transcript_exists_in_ai_transcript_table(
         |row| row.get::<_, i32>(0),
     )
 }
-fn check_if_ai_transcript_exists_in_ai_transcript_table_via_vid_id(
+fn _check_if_ai_transcript_exists_in_ai_transcript_table_via_vid_id(
     con: &Connection,
     video_id: i32,
 ) -> Result<i32> {
@@ -606,12 +586,12 @@ fn get_mappings_for_videos(con: &Connection) -> Result<HashMap<i32,i32>> {
 fn get_identifier(s: &str) -> Result<Identifier, String> {
     let identifier_int = s.trim().parse::<i32>();
     match identifier_int {
-        Ok(int) => Ok(Identifier::Id(int as i32)),
+        Ok(int) => Ok(Identifier::Id(int)),
         Err(_err) => Ok(Identifier::Title(s.to_string())),
     }
 }
 fn get_transcript_body_from_video_id(con: &Connection, video_id: i32) -> Result<String> {
-    let mappings = get_mappings_for_videos(&con).expect("failed to get mappings for transcripts");
+    let mappings = get_mappings_for_videos(con).expect("failed to get mappings for transcripts");
     match mappings.get(&video_id) {
         Some(mapped_video_id) => {
             con.query_row(
@@ -637,17 +617,16 @@ fn get_transcript_body_from_title(con: &Connection, title: String) -> Result<()>
         let handled_transcript = transcript.unwrap();
         collect.push(handled_transcript.clone());
     }
-    println!("size of found transcripts are {}", collect.len());
     if collect.len() == 1 {
-        match get_transcript_body_from_video_id(&con, collect[0].video_id) {
+        match get_transcript_body_from_video_id(con, collect[0].video_id) {
             Ok(body) => println!("{}", body),
             Err(err) => println!("did not find a transcript with the id. {err}"),
         }
     } else {
         println!("Multiple videos found please select one");
         let mut counter = 1;
-        for i in 0..collect.len() {
-            println!("{}  {}", counter, collect[i].title);
+        for transcript in &collect {
+            println!("{}  {}", counter, transcript.title);
             counter += 1;
         }
         println!("Choose a video id: ");
@@ -656,7 +635,7 @@ fn get_transcript_body_from_title(con: &Connection, title: String) -> Result<()>
             .read_line(&mut choice)
             .expect("failed to read your input");
         let parsed_user_choice = choice.trim().parse::<i32>().unwrap();
-        match get_transcript_body_from_video_id(&con, parsed_user_choice) {
+        match get_transcript_body_from_video_id(con, parsed_user_choice) {
             Ok(body) => println!("{}", body),
             Err(err) => println!("did not find a transcript with the id. {err}"),
         }
