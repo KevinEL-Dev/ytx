@@ -1,10 +1,10 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process::Command;
 use std::{fs, process::exit};
 use std::{io, process};
-use std::collections::HashMap;
 
 use directories::ProjectDirs;
 
@@ -57,6 +57,11 @@ enum Commands {
     List,
     /// Open a transcript where identifier is either an Id or Article title
     Open {
+        #[arg(value_parser = get_identifier)]
+        identifier: Identifier,
+    },
+    /// Delete a transcript where identifier is either an Id or Article title
+    Delete {
         #[arg(value_parser = get_identifier)]
         identifier: Identifier,
     },
@@ -116,7 +121,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_name_path =
         return_data_dir("ytx".to_string()).expect("failed to retrieve app data dir");
 
-    let con = open_ytx_db(app_name_path).expect("failed to open connection to db");
+    let mut con = open_ytx_db(app_name_path).expect("failed to open connection to db");
 
     // once we get the connection lets check if our tables are created
     let res_for_video_table = check_if_tables_exist(&con, "video").expect("failed to check table");
@@ -296,6 +301,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        Some(Commands::Delete { identifier }) => match identifier {
+            Identifier::Id(i) => match delete_with_video_id(&mut con, *i) {
+                Ok(output) => println!("{output}"),
+                Err(err) => println!("Error: {err}"),
+            },
+            Identifier::Title(title) => match delete_with_title(&mut con, title.to_string()) {
+                Ok(output) => println!("{output}"),
+                Err(err) => println!("Error: {err}"),
+            },
+        },
         None => {}
     }
     Ok(())
@@ -549,22 +564,19 @@ fn get_all_videos(con: &Connection) -> Result<()> {
             video_id: row.get(1)?,
         })
     })?;
-    let mut in_order_video_id_mappings: HashMap<i32,i32> = HashMap::new();
+    let mut in_order_video_id_mappings: HashMap<i32, i32> = HashMap::new();
     let mut collect: Vec<Transcript> = Vec::new();
     let mut counter = 1;
     for transcript in transcript_iter {
         let handled_transcript = transcript.unwrap();
         collect.push(handled_transcript.clone());
-        in_order_video_id_mappings.insert(counter,handled_transcript.video_id);
-        println!(
-            "{}  {}",
-            counter, handled_transcript.title
-        );
+        in_order_video_id_mappings.insert(counter, handled_transcript.video_id);
+        println!("{}  {}", counter, handled_transcript.title);
         counter += 1;
     }
     Ok(())
 }
-fn get_mappings_for_videos(con: &Connection) -> Result<HashMap<i32,i32>> {
+fn get_mappings_for_videos(con: &Connection) -> Result<HashMap<i32, i32>> {
     let mut stmt = con.prepare("SELECT title, video_id FROM transcript")?;
     let transcript_iter = stmt.query_map([], |row| {
         Ok(Transcript {
@@ -572,13 +584,13 @@ fn get_mappings_for_videos(con: &Connection) -> Result<HashMap<i32,i32>> {
             video_id: row.get(1)?,
         })
     })?;
-    let mut in_order_video_id_mappings: HashMap<i32,i32> = HashMap::new();
+    let mut in_order_video_id_mappings: HashMap<i32, i32> = HashMap::new();
     let mut collect: Vec<Transcript> = Vec::new();
     let mut counter = 1;
     for transcript in transcript_iter {
         let handled_transcript = transcript.unwrap();
         collect.push(handled_transcript.clone());
-        in_order_video_id_mappings.insert(counter,handled_transcript.video_id);
+        in_order_video_id_mappings.insert(counter, handled_transcript.video_id);
         counter += 1;
     }
     Ok(in_order_video_id_mappings)
@@ -593,15 +605,29 @@ fn get_identifier(s: &str) -> Result<Identifier, String> {
 fn get_transcript_body_from_video_id(con: &Connection, video_id: i32) -> Result<String> {
     let mappings = get_mappings_for_videos(con).expect("failed to get mappings for transcripts");
     match mappings.get(&video_id) {
-        Some(mapped_video_id) => {
-            con.query_row(
-                "SELECT body FROM ai_transcript WHERE video_id = :video_id",
-                named_params! {":video_id":mapped_video_id},
-                |row| row.get::<_, String>(0),
-            )
-        }
-        None => Ok("Invalid video id passed".to_string())
+        Some(mapped_video_id) => con.query_row(
+            "SELECT body FROM ai_transcript WHERE video_id = :video_id",
+            named_params! {":video_id":mapped_video_id},
+            |row| row.get::<_, String>(0),
+        ),
+        None => Ok("Invalid video id passed".to_string()),
     }
+}
+fn get_transcripts_from_title(con: &Connection, title: String) -> Result<Vec<Transcript>> {
+    let mut stmt = con.prepare("SELECT title, video_id FROM transcript WHERE title LIKE :title")?;
+    let title_param = format!("%{}%", title);
+    let title_iter = stmt.query_map(named_params! {":title":title_param}, |row| {
+        Ok(Transcript {
+            title: row.get(0)?,
+            video_id: row.get(1)?,
+        })
+    })?;
+    let mut collect: Vec<Transcript> = Vec::new();
+    for transcript in title_iter {
+        let handled_transcript = transcript.unwrap();
+        collect.push(handled_transcript.clone());
+    }
+    Ok(collect)
 }
 fn get_transcript_body_from_title(con: &Connection, title: String) -> Result<()> {
     let mut stmt = con.prepare("SELECT title, video_id FROM transcript WHERE title LIKE :title")?;
@@ -641,4 +667,102 @@ fn get_transcript_body_from_title(con: &Connection, title: String) -> Result<()>
         }
     }
     Ok(())
+}
+fn delete_with_video_id(con: &mut Connection, video_id: i32) -> Result<String, rusqlite::Error> {
+    let mappings = get_mappings_for_videos(con).expect("failed to get mappings for transcripts");
+    match mappings.get(&video_id) {
+        Some(mapped_video_id) => {
+            let tx = con.transaction()?;
+
+            tx.execute("DELETE FROM video WHERE id=(?1)", [mapped_video_id])?;
+            tx.execute(
+                "DELETE FROM transcript WHERE video_id=(?1)",
+                [mapped_video_id],
+            )?;
+            tx.execute(
+                "DELETE FROM ai_transcript WHERE video_id=(?1)",
+                [mapped_video_id],
+            )?;
+
+            if let Err(err) = tx.commit() {
+                eprint!("Something went wrong with transactions. Err: {err}");
+                return Err(err);
+            }
+            Ok("Successfully deleted article".to_string())
+        }
+        None => Ok("Video_id provided not mapped to an existing article".to_string()),
+    }
+}
+fn delete_with_title_actually(
+    con: &mut Connection,
+    title: String,
+) -> Result<String, rusqlite::Error> {
+    let vid_id =
+        get_video_id_from_title(con, title).expect("should have gotten the video id from title");
+    let tx = con.transaction()?;
+
+    tx.execute("DELETE FROM video WHERE id=(?1)", [vid_id])?;
+    tx.execute("DELETE FROM transcript WHERE video_id=(?1)", [vid_id])?;
+    tx.execute("DELETE FROM ai_transcript WHERE video_id=(?1)", [vid_id])?;
+
+    if let Err(err) = tx.commit() {
+        eprint!("Something went wrong with transactions in delete_with_title_actually Err: {err}");
+        return Err(err);
+    }
+    Ok("Successfully deleted article".to_string())
+}
+fn delete_with_title(con: &mut Connection, title: String) -> Result<String, rusqlite::Error> {
+    let collect = get_transcripts_from_title(con, title).unwrap();
+    if collect.len() == 1 {
+        println!("Would you like to delete article {} ?", collect[0].title);
+        // get user input then
+        println!("y or n");
+        let mut choice = String::new();
+        io::stdin()
+            .read_line(&mut choice)
+            .expect("failed to read your input");
+        match choice.trim().to_lowercase() {
+            // if we have multiple videos, the video we delete will not always map to 1
+            val if val == "y" => match delete_with_title_actually(con, collect[0].title.clone()) {
+                Ok(output) => Ok(output),
+                Err(err) => Err(err),
+            },
+            val if val == "n" => Ok("You chose not to delete".to_string()),
+            _ => Ok("please pick y or n next time!".to_string()),
+        }
+    } else {
+        println!("Multiple videos found please select one");
+        let mut counter = 1;
+        for transcript in &collect {
+            println!("{}  {}", counter, transcript.title);
+            counter += 1;
+        }
+        println!("Choose a video id: ");
+        let mut choice = String::new();
+        io::stdin()
+            .read_line(&mut choice)
+            .expect("failed to read your input");
+        let parsed_user_choice = choice.trim().parse::<i32>().unwrap();
+        match delete_with_video_id(con, parsed_user_choice) {
+            Ok(output) => Ok(output),
+            Err(err) => Err(err),
+        }
+    }
+}
+fn get_video_id_from_title(con: &mut Connection, title: String) -> Result<i32> {
+    // this should only return a single title
+    let mut stmt = con.prepare("SELECT title, video_id FROM transcript WHERE title LIKE :title")?;
+    let title_param = format!("%{}%", title);
+    let title_iter = stmt.query_map(named_params! {":title":title_param}, |row| {
+        Ok(Transcript {
+            title: row.get(0)?,
+            video_id: row.get(1)?,
+        })
+    })?;
+    let mut collect: Vec<Transcript> = Vec::new();
+    for transcript in title_iter {
+        let handled_transcript = transcript.unwrap();
+        collect.push(handled_transcript.clone());
+    }
+    Ok(collect[0].video_id)
 }
