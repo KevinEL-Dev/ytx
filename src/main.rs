@@ -4,6 +4,7 @@ use std::path::Path;
 use std::process::Command;
 use std::{fs, process::exit};
 use std::{io, process};
+use std::collections::HashMap;
 
 use directories::ProjectDirs;
 
@@ -382,10 +383,6 @@ fn check_if_tables_exist(con: &Connection, table_name: &str) -> Result<bool> {
         .table_exists(Some("main"), table_name)
         .expect("something went wrong searching tables");
     Ok(res_video_table)
-    // if dne then return false
-    // if youtubevideo_table dne, then create it
-    // youtube metadata table that stores, trascript, language,
-    // if youtube metadata dne, create it
 }
 fn create_table_video(con: &Connection, table_name: &str) -> Result<()> {
     let sql = "Create TABLE ".to_owned()
@@ -572,18 +569,41 @@ fn get_all_videos(con: &Connection) -> Result<()> {
             video_id: row.get(1)?,
         })
     })?;
+    let mut in_order_video_id_mappings: HashMap<i32,i32> = HashMap::new();
+    let mut collect: Vec<Transcript> = Vec::new();
+    let mut counter = 1;
     for transcript in transcript_iter {
         let handled_transcript = transcript.unwrap();
+        collect.push(handled_transcript.clone());
+        in_order_video_id_mappings.insert(counter,handled_transcript.video_id);
         println!(
             "{}  {}",
-            handled_transcript.video_id, handled_transcript.title
+            counter, handled_transcript.title
         );
+        counter += 1;
     }
     Ok(())
 }
+fn get_mappings_for_videos(con: &Connection) -> Result<HashMap<i32,i32>> {
+    let mut stmt = con.prepare("SELECT title, video_id FROM transcript")?;
+    let transcript_iter = stmt.query_map([], |row| {
+        Ok(Transcript {
+            title: row.get(0)?,
+            video_id: row.get(1)?,
+        })
+    })?;
+    let mut in_order_video_id_mappings: HashMap<i32,i32> = HashMap::new();
+    let mut collect: Vec<Transcript> = Vec::new();
+    let mut counter = 1;
+    for transcript in transcript_iter {
+        let handled_transcript = transcript.unwrap();
+        collect.push(handled_transcript.clone());
+        in_order_video_id_mappings.insert(counter,handled_transcript.video_id);
+        counter += 1;
+    }
+    Ok(in_order_video_id_mappings)
+}
 fn get_identifier(s: &str) -> Result<Identifier, String> {
-    // attempt to parse an int from the user input
-    // if int is successful return Identifier(i32)
     let identifier_int = s.trim().parse::<i32>();
     match identifier_int {
         Ok(int) => Ok(Identifier::Id(int as i32)),
@@ -591,11 +611,17 @@ fn get_identifier(s: &str) -> Result<Identifier, String> {
     }
 }
 fn get_transcript_body_from_video_id(con: &Connection, video_id: i32) -> Result<String> {
-    con.query_row(
-        "SELECT body FROM ai_transcript WHERE video_id = :video_id",
-        named_params! {":video_id":video_id},
-        |row| row.get::<_, String>(0),
-    )
+    let mappings = get_mappings_for_videos(&con).expect("failed to get mappings for transcripts");
+    match mappings.get(&video_id) {
+        Some(mapped_video_id) => {
+            con.query_row(
+                "SELECT body FROM ai_transcript WHERE video_id = :video_id",
+                named_params! {":video_id":mapped_video_id},
+                |row| row.get::<_, String>(0),
+            )
+        }
+        None => Ok("Invalid video id passed".to_string())
+    }
 }
 fn get_transcript_body_from_title(con: &Connection, title: String) -> Result<()> {
     let mut stmt = con.prepare("SELECT title, video_id FROM transcript WHERE title LIKE :title")?;
@@ -610,7 +636,6 @@ fn get_transcript_body_from_title(con: &Connection, title: String) -> Result<()>
     for transcript in title_iter {
         let handled_transcript = transcript.unwrap();
         collect.push(handled_transcript.clone());
-        //println!("{}  {}",handled_transcript.video_id,handled_transcript.title);
     }
     println!("size of found transcripts are {}", collect.len());
     if collect.len() == 1 {
@@ -620,8 +645,10 @@ fn get_transcript_body_from_title(con: &Connection, title: String) -> Result<()>
         }
     } else {
         println!("Multiple videos found please select one");
+        let mut counter = 1;
         for i in 0..collect.len() {
-            println!("{}  {}", collect[i].video_id, collect[i].title);
+            println!("{}  {}", counter, collect[i].title);
+            counter += 1;
         }
         println!("Choose a video id: ");
         let mut choice = String::new();
@@ -634,8 +661,5 @@ fn get_transcript_body_from_title(con: &Connection, title: String) -> Result<()>
             Err(err) => println!("did not find a transcript with the id. {err}"),
         }
     }
-    // if the we found one that means we just print that one body
-    //
-    // else we need to prompt the user to select a transcript
     Ok(())
 }
