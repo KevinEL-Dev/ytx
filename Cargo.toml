@@ -18,4 +18,7 @@ ollama-rs = "0.3.4"
 directories = "6.0.0"
 rusqlite = "0.39.0"
 regex = "1.12.3"
+ratatui = "0.30.0"
+crossterm = "0.29.0"
+color-eyre = "0.6.5"
 

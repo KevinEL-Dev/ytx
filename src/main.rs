@@ -6,6 +6,20 @@ use std::process::Command;
 use std::{fs, process::exit};
 use std::{io, process};
 
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use ratatui::prelude::*;
+
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::Stylize,
+    symbols::border,
+    text::{Line, Text},
+    widgets::{Block, Paragraph, Widget,List, ListDirection, ListItem, ListState},
+    DefaultTerminal, Frame,
+    widgets::Borders,
+};
+
 use directories::ProjectDirs;
 
 use ollama_rs::Ollama;
@@ -79,6 +93,7 @@ struct Transcript {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::style::Style;
 
     #[test]
     fn test_create_data_dir() {
@@ -99,7 +114,126 @@ mod tests {
             None => panic!("something went wrong getting test path"),
         }
     }
+    #[test]
+    fn handle_key_event() {
+        let mut app = App::default();
+        app.handle_key_event(KeyCode::Char('j').into());
+        assert_eq!(app.selected_article, 1);
+
+        app.handle_key_event(KeyCode::Char('k').into());
+        assert_eq!(app.selected_article, 0);
+
+        let mut app = App::default();
+        app.handle_key_event(KeyCode::Char('q').into());
+        assert!(app.exit);
+    }
 }
+#[derive(Debug,Default)]
+pub struct App {
+    counter: u8,
+    articles: Vec<String>,
+    selected_article:usize,
+    exit: bool,
+}
+impl App {
+    pub fn run(&mut self, terminal: &mut DefaultTerminal,state: &mut ListState) -> io::Result<()>{
+        self.articles = ["Item 1".to_string(), "Item 2".to_string(), "Item 3".to_string()].to_vec();
+        while !self.exit{
+            terminal.draw(|frame| self.draw(frame,state))?;
+            self.handle_events()?;
+            state.select(Some(self.selected_article));
+        }
+        Ok(())
+    }
+    fn draw(&self, frame: &mut Frame, mut state: &mut ListState){
+        // I want the left side to be a list
+        let layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![
+                Constraint::Percentage(50),
+                Constraint::Percentage(50)
+            ])
+            .split(frame.area());
+        let list = List::new(self.articles.clone())
+            .block(Block::bordered().title("List"))
+            .style(Style::new().white())
+            .highlight_style(Style::new().italic())
+            .highlight_symbol(">>")
+            .repeat_highlight_symbol(true)
+            .direction(ListDirection::TopToBottom);
+        // frame.render_widget(list,layout[]);
+        frame.render_stateful_widget(list,layout[0],&mut state);
+        frame.render_widget(
+            Paragraph::new("Right")
+                .block(Block::new().borders(Borders::ALL)),
+            layout[1]);
+
+    }
+    fn handle_events(&mut self) -> io::Result<()>{
+        match event::read()? {
+            Event::Key(key_event) if key_event.kind == KeyEventKind::Press =>{
+                self.handle_key_event(key_event)
+            }
+            _ =>{}
+        };
+        Ok(())
+    }
+    fn handle_key_event(&mut self,key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Char('q') => self.exit(),
+            // instead of decrementing counter, move up in our article list
+            KeyCode::Char('k') => self.decrement_counter(),
+            // instead of incrementing counter, move down in our article list
+            KeyCode::Char('j') => self.increment_counter(),
+            _ => {}
+
+        }
+    }
+    fn exit(&mut self){
+        self.exit = true;
+    }
+    fn increment_counter(&mut self){
+        if self.selected_article < (self.articles.len() - 1).try_into().unwrap() {
+            self.selected_article += 1;
+        }
+    }
+    // scroll up
+    fn decrement_counter(&mut self){
+
+        if self.selected_article > 0{
+            self.selected_article -= 1;
+        }
+    }
+}
+impl Widget for &App{
+    // this will render our list of articles
+    fn render(self, area:Rect, buf: &mut Buffer){
+        let title = Line::from(" Your Articles ".bold());
+        let instructions = Line::from(vec![
+            " Decrement ".into(),
+            "<Left>".blue().bold(),
+            " Increment ".into(),
+            "<Right>".blue().bold(),
+            " Quit ".into(),
+            "<Q> ".blue().bold(),
+        ]);
+        let block = Block::bordered()
+            .title(title.centered())
+            .title_bottom(instructions.centered());
+
+        // render our list
+        let counter_text = Text::from(vec![Line::from(vec![
+            "Value: ".into(),
+            self.counter.to_string().yellow(),
+
+        ])]);
+        Paragraph::new(counter_text)
+            .centered()
+            .block(block)
+            .render(area,buf);
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
@@ -312,6 +446,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         },
         None => {}
+    }
+    let mut state = ListState::default();
+    if let Err(err) = ratatui::run(|terminal| App::default().run(terminal,&mut state)){
+        eprintln!("{err}")
     }
     Ok(())
 }
