@@ -1,27 +1,92 @@
 # ytx
-ytx is a command line utility that generates articles from youtube videos. ytx will fetch youtube transcripts and turn them into readable articles while maintaing the youtube creators message.
+ytx is a command line tool that converts YouTube transcripts into readable articles using LLMs.
 
 # Usage Currently
-![ytx live demo](assets/ytx_live_demo.gif)
+![ytx live demo](assets/newdemo1.gif)
+
+Second run on same link
+
+![ytx live demo second run](assets/second_run.gif)
+
+## Installation
+```
+cargo install ytx
+```
+## Caching
+ytx will cache transcripts and generated articles locally. Running ytx on the same video will reuse cached data, making the second run much faster.
 
 ## Getting Started
 ytx utilizes ollama and its models to take youtube transcripts and make them readable. To be able to use ytx you must have ollama installed.
 
-ytx currently has options to use 3 cloud models and 1 local model provided by ollama. To be able to use the cloud models you must have an account with ollama but if you have the local model installed you can select that to be your model of choice without needing an ollama account. Local models speed in generating / rewriting your readable transcripts can vary in depending on your hardware. Typically, the cloud models are much quicker.
+### Ollama install
+[head to ollama to install](https://ollama.com/)
+
+ytx currently has options to use 3 cloud models and 1 local model provided by ollama. To be able to use the cloud models you must have an account with ollama but if you have the local model installed you can select that to be your model of choice without needing an ollama account. Local models speed in generating / rewriting your readable transcripts can vary depending on your hardware. Typically, the cloud models are much quicker.
 
 ## Usage
+Generate an article from a Youtube video:
 
-You can provide a provide a youtube video link.
+```bash
+ytx "https://www.youtube.com/watch?v=VIDEO_ID"
+```
+Choose a cloud ollama model:
+```bash
+ytx "https://www.youtube.com/watch?v=VIDEO_ID" --model kimi-k2"
+```
+Choose a local ollama model:
+```bash
+ytx "https://www.youtube.com/watch?v=VIDEO_ID" --model glm4flash"
+```
+List saved articles
+```bash
+ytx list
+```
+Open a saved article by index or title:
+```
+ytx open <index | title>
+```
+Delete a saved article by index or title:
+```bash
+ytx delete <index | title>
 
-## Concerns and future for the project
-Besides that I have ambitious plans for this project.
+```
+## Example Workflow
 
-| Current Features |
-| ------------- |
-| Save transcripts for youtube videos that have been already fetched |
-| Option to choose ollama models |
+Generate an article from a video:
+```bash
+ytx "https://www.youtube.com/watch?v=VIDEO_ID"
+```
+List saved articles:
+```bash
+ytx list
+```
+Open an article:
+```bash
+ytx open 1
+```
+Delete an article:
+```bash
+ytx delete 1
+```
 
-I really want this project to be a free resource. The challenge with this is that its hard to find transcripts that are created for easy readability. So this leads to a difficult issue, what is the best way(free way) to turn these transcripts of people talking into a readable format. The simplest way would be to pass this to an LLM api but  that would mean to use an API key which means billing. Another option was to use some sort of NLP strategy that I won't get into.
+## Features
+- Fetch YouTube transcripts
+- Convert transcripts into readable articles
+- Supports Ollama local and cloud models
+- Caches transcripts for faster reruns
+- Search transcripts based on title of youtube video
+- Delete transcripts based on title or index
+## How It Works
+1. Fetch transcript using the ytt crate
+2. Send transcript to selected Ollama model
+3. Model rewrites transcript into article format
+4. Article is saved locally
+5. Transcript is cached to speed up future runs
 
-I decided that for now the best course of action would be to use an LLM but that just runs on your local machine(duh). I will probably implement the use of your own API key but there is already a solution for that which is comes from the ytt crate in rust that I currently use within this program to retrieve youtube video transcript.
+## Roadmap
 
+- [x] search transcripts based on title of youtube video
+
+- [ ] support different file type outputs like pdf or md
+
+- [ ] tui reader built in ytx
