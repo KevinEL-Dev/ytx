@@ -86,7 +86,7 @@ enum Identifier {
     Title(String),
 }
 #[derive(Debug, Clone)]
-struct Transcript {
+pub struct Transcript {
     video_id: i32,
     title: String,
 }
@@ -131,21 +131,22 @@ mod tests {
 #[derive(Debug,Default)]
 pub struct App {
     counter: u8,
-    articles: Vec<String>,
+    articles: Vec<Transcript>,
     selected_article:usize,
     exit: bool,
 }
 impl App {
-    pub fn run(&mut self, terminal: &mut DefaultTerminal,state: &mut ListState) -> io::Result<()>{
-        self.articles = ["Item 1".to_string(), "Item 2".to_string(), "Item 3".to_string()].to_vec();
+    pub fn run(&mut self, terminal: &mut DefaultTerminal,state: &mut ListState,articles: Vec<Transcript>) -> io::Result<()>{
+        self.articles = articles;
+        let string_arr = self.turn_articles_arr_to_str();
         while !self.exit{
-            terminal.draw(|frame| self.draw(frame,state))?;
+            terminal.draw(|frame| self.draw(frame,state,string_arr.clone()))?;
             self.handle_events()?;
             state.select(Some(self.selected_article));
         }
         Ok(())
     }
-    fn draw(&self, frame: &mut Frame, mut state: &mut ListState){
+    fn draw(&self, frame: &mut Frame, mut state: &mut ListState,string_articles: Vec<String>){
         // I want the left side to be a list
         let layout = Layout::default()
             .direction(Direction::Horizontal)
@@ -154,7 +155,7 @@ impl App {
                 Constraint::Percentage(50)
             ])
             .split(frame.area());
-        let list = List::new(self.articles.clone())
+        let list = List::new(string_articles)
             .block(Block::bordered().title("List"))
             .style(Style::new().white())
             .highlight_style(Style::new().italic())
@@ -203,6 +204,13 @@ impl App {
         if self.selected_article > 0{
             self.selected_article -= 1;
         }
+    }
+    fn turn_articles_arr_to_str(&mut self) -> Vec<String>{
+        let mut string_articles: Vec<String> = vec![];
+        for transcript in self.articles.clone(){
+            string_articles.push(transcript.title)
+        }
+        return string_articles;
     }
 }
 impl Widget for &App{
@@ -448,7 +456,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => {}
     }
     let mut state = ListState::default();
-    if let Err(err) = ratatui::run(|terminal| App::default().run(terminal,&mut state)){
+    let transcripts = get_all_videos_as_a_vec(&mut con);
+    if let Err(err) = ratatui::run(|terminal| App::default().run(terminal,&mut state,transcripts.expect("reason"))){
         eprintln!("{err}")
     }
     Ok(())
@@ -713,6 +722,25 @@ fn get_all_videos(con: &Connection) -> Result<()> {
         counter += 1;
     }
     Ok(())
+}
+fn get_all_videos_as_a_vec(con: &Connection) -> Result<Vec<Transcript>> {
+    let mut stmt = con.prepare("SELECT title, video_id FROM transcript")?;
+    let transcript_iter = stmt.query_map([], |row| {
+        Ok(Transcript {
+            title: row.get(0)?,
+            video_id: row.get(1)?,
+        })
+    })?;
+    let mut in_order_video_id_mappings: HashMap<i32, i32> = HashMap::new();
+    let mut collect: Vec<Transcript> = Vec::new();
+    let mut counter = 1;
+    for transcript in transcript_iter {
+        let handled_transcript = transcript.unwrap();
+        collect.push(handled_transcript.clone());
+        in_order_video_id_mappings.insert(counter, handled_transcript.video_id);
+        counter += 1;
+    }
+    Ok(collect)
 }
 fn get_mappings_for_videos(con: &Connection) -> Result<HashMap<i32, i32>> {
     let mut stmt = con.prepare("SELECT title, video_id FROM transcript")?;
