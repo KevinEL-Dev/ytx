@@ -27,11 +27,11 @@ ytx "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 Choose a cloud ollama model:
 ```bash
-ytx "https://www.youtube.com/watch?v=VIDEO_ID" --model kimi-k2"
+ytx "https://www.youtube.com/watch?v=VIDEO_ID" --model "kimi-k2"
 ```
 Choose a local ollama model:
 ```bash
-ytx "https://www.youtube.com/watch?v=VIDEO_ID" --model glm4flash"
+ytx "https://www.youtube.com/watch?v=VIDEO_ID" --model "glm4flash"
 ```
 List saved articles
 ```bash
