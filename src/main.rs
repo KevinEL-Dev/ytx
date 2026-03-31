@@ -168,10 +168,10 @@ impl App {
             ])
             .split(outer_layout[0]);
         let list = List::new(string_articles)
-            .block(Block::bordered().title("List"))
+            .block(Block::bordered().title(Line::from(format!("Saved Articles ({})",self.articles.len())).bold()))
             .style(Style::new().white())
-            .highlight_style(Style::new().italic())
-            .highlight_symbol(">>")
+            .highlight_style(Style::new().reversed())
+            .highlight_symbol(">> ")
             .repeat_highlight_symbol(true)
             .direction(ListDirection::TopToBottom);
         // frame.render_widget(list,layout[]);
@@ -200,24 +200,21 @@ impl App {
 
         }
         let instructions_non_full_screen = Line::from(vec![
-            " down ".into(),
-            "<j>".blue().bold(),
-            " up ".into(),
-            "<k>".blue().bold(),
-            " quit ".into(),
-            "<q> ".blue().bold(),
-            " toggle fullscreen ".into(),
-            "<f> ".blue().bold(),
+            "j/k".blue().bold(),
+            " Scroll ".into(),
+            "|".into(),
+            " Enter".blue().bold(),
+            " Read ".into(),
+            "|".into(),
+            " q".blue().bold(),
+            " Quit ".into(),
         ]);
         let instructions_full_screen = Line::from(vec![
-            " scroll down ".into(),
-            "<j>".blue().bold(),
-            " scroll up ".into(),
-            "<k>".blue().bold(),
-            " quit ".into(),
-            "<q> ".blue().bold(),
-            " minimize ".into(),
-            "<f> ".blue().bold(),
+            "q".blue().bold(),
+            " Back ".into(),
+            "|".into(),
+            " j/k".blue().bold(),
+            " Scroll ".into(),
         ]);
 
         let instruction_text = Text::from(instructions_non_full_screen);
@@ -265,7 +262,7 @@ impl App {
                     self.increment_counter()
                 }
             }
-            KeyCode::Char('f') => self.set_fullscreen(),
+            KeyCode::Enter => self.set_fullscreen(),
             _ => {}
 
         }
