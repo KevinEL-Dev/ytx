@@ -15,11 +15,12 @@ use ratatui::{
     style::Stylize,
     symbols::border,
     text::{Line, Text},
-    widgets::{Block, Paragraph, Widget,List, ListDirection, ListItem, ListState},
+    widgets::{Block, Paragraph, Widget,List, ListDirection, ListItem, ListState, Wrap},
     DefaultTerminal, Frame,
     widgets::Borders,
 };
 
+use tui_markdown::from_str;
 use directories::ProjectDirs;
 
 use ollama_rs::Ollama;
@@ -133,28 +134,39 @@ pub struct App {
     counter: u8,
     articles: Vec<Transcript>,
     selected_article:usize,
+    full_screen: bool,
+    paragraph_y_offset: u16,
     exit: bool,
 }
 impl App {
-    pub fn run(&mut self, terminal: &mut DefaultTerminal,state: &mut ListState,articles: Vec<Transcript>) -> io::Result<()>{
+    pub fn run(&mut self, terminal: &mut DefaultTerminal,state: &mut ListState,articles: Vec<Transcript>,con: &Connection) -> io::Result<()>{
         self.articles = articles;
         let string_arr = self.turn_articles_arr_to_str();
+        self.full_screen = false;
         while !self.exit{
-            terminal.draw(|frame| self.draw(frame,state,string_arr.clone()))?;
+            terminal.draw(|frame| self.draw(frame,state,string_arr.clone(),con))?;
             self.handle_events()?;
             state.select(Some(self.selected_article));
         }
         Ok(())
     }
-    fn draw(&self, frame: &mut Frame, mut state: &mut ListState,string_articles: Vec<String>){
+    fn draw(&self, frame: &mut Frame, mut state: &mut ListState,string_articles: Vec<String>,con: &Connection){
         // I want the left side to be a list
+        // use this layout when not in fullscreen
+        let outer_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![
+                Constraint::Percentage(90),
+                Constraint::Percentage(10),
+            ])
+            .split(frame.area());
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![
                 Constraint::Percentage(50),
                 Constraint::Percentage(50)
             ])
-            .split(frame.area());
+            .split(outer_layout[0]);
         let list = List::new(string_articles)
             .block(Block::bordered().title("List"))
             .style(Style::new().white())
@@ -163,12 +175,64 @@ impl App {
             .repeat_highlight_symbol(true)
             .direction(ListDirection::TopToBottom);
         // frame.render_widget(list,layout[]);
-        frame.render_stateful_widget(list,layout[0],&mut state);
-        frame.render_widget(
-            Paragraph::new("Right")
-                .block(Block::new().borders(Borders::ALL)),
-            layout[1]);
+        // render list when not in fullscreen
+        let video_id = self.articles[self.selected_article].video_id;
+        let body_text = get_transcript_body_from_video_id_no_mappings(con,video_id).unwrap();
+        let md_text = from_str(&body_text);
+        let article_text = Text::from(md_text);
+        if !self.full_screen {
 
+            frame.render_stateful_widget(list,layout[0],&mut state);
+            // right side should show the body text of the article
+            frame.render_widget(
+                Paragraph::new(article_text)
+                    .wrap(Wrap {trim: true})
+                    .block(Block::new().borders(Borders::ALL)),
+                layout[1]);
+        }else{
+            // render the article text in full screen
+            frame.render_widget(
+                Paragraph::new(article_text)
+                    .wrap(Wrap {trim: true})
+                    .scroll((self.paragraph_y_offset,0))
+                    .block(Block::new().borders(Borders::ALL)),
+                outer_layout[0]);
+
+        }
+        let instructions_non_full_screen = Line::from(vec![
+            " down ".into(),
+            "<j>".blue().bold(),
+            " up ".into(),
+            "<k>".blue().bold(),
+            " quit ".into(),
+            "<q> ".blue().bold(),
+            " toggle fullscreen ".into(),
+            "<f> ".blue().bold(),
+        ]);
+        let instructions_full_screen = Line::from(vec![
+            " scroll down ".into(),
+            "<j>".blue().bold(),
+            " scroll up ".into(),
+            "<k>".blue().bold(),
+            " quit ".into(),
+            "<q> ".blue().bold(),
+            " minimize ".into(),
+            "<f> ".blue().bold(),
+        ]);
+
+        let instruction_text = Text::from(instructions_non_full_screen);
+        let instruction_text_fullscreen = Text::from(instructions_full_screen);
+        if self.full_screen{
+            frame.render_widget(
+                Paragraph::new(instruction_text_fullscreen)
+                    .block(Block::new().borders(Borders::ALL)),
+                outer_layout[1]);
+        }else{
+            frame.render_widget(
+                Paragraph::new(instruction_text)
+                    .block(Block::new().borders(Borders::ALL)),
+                outer_layout[1]);
+        }
     }
     fn handle_events(&mut self) -> io::Result<()>{
         match event::read()? {
@@ -183,15 +247,46 @@ impl App {
         match key_event.code {
             KeyCode::Char('q') => self.exit(),
             // instead of decrementing counter, move up in our article list
-            KeyCode::Char('k') => self.decrement_counter(),
+            KeyCode::Char('k') => {
+                if self.full_screen{
+                    self.up_scroll()
+                }else{
+
+                    self.decrement_counter()
+                }
+            }
+
             // instead of incrementing counter, move down in our article list
-            KeyCode::Char('j') => self.increment_counter(),
+            KeyCode::Char('j') => {
+                if self.full_screen{
+                    self.down_scroll()
+                }else{
+
+                    self.increment_counter()
+                }
+            }
+            KeyCode::Char('f') => self.set_fullscreen(),
             _ => {}
 
         }
     }
     fn exit(&mut self){
         self.exit = true;
+    }
+    fn set_fullscreen(&mut self){
+        if self.full_screen{
+            self.full_screen = false
+        }else{
+            self.full_screen = true
+        }
+    }
+    fn down_scroll(&mut self){
+        self.paragraph_y_offset += 1;
+    }
+    fn up_scroll(&mut self){
+        if self.paragraph_y_offset > 0{
+            self.paragraph_y_offset -= 1;
+        }
     }
     fn increment_counter(&mut self){
         if self.selected_article < (self.articles.len() - 1).try_into().unwrap() {
@@ -210,7 +305,7 @@ impl App {
         for transcript in self.articles.clone(){
             string_articles.push(transcript.title)
         }
-        return string_articles;
+        string_articles
     }
 }
 impl Widget for &App{
@@ -456,8 +551,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => {}
     }
     let mut state = ListState::default();
-    let transcripts = get_all_videos_as_a_vec(&mut con);
-    if let Err(err) = ratatui::run(|terminal| App::default().run(terminal,&mut state,transcripts.expect("reason"))){
+    let transcripts = get_all_videos_as_a_vec(&con);
+    if let Err(err) = ratatui::run(|terminal| App::default().run(terminal,&mut state,transcripts.expect("reason"),&con)){
         eprintln!("{err}")
     }
     Ok(())
@@ -778,6 +873,13 @@ fn get_transcript_body_from_video_id(con: &Connection, video_id: i32) -> Result<
         ),
         None => Ok("Invalid video id passed".to_string()),
     }
+}
+fn get_transcript_body_from_video_id_no_mappings(con: &Connection, video_id: i32) -> Result<String> {
+        con.query_row(
+            "SELECT body FROM ai_transcript WHERE video_id = :video_id",
+            named_params! {":video_id":video_id},
+            |row| row.get::<_, String>(0),
+        )
 }
 fn get_transcripts_from_title(con: &Connection, title: String) -> Result<Vec<Transcript>> {
     let mut stmt = con.prepare("SELECT title, video_id FROM transcript WHERE title LIKE :title")?;
