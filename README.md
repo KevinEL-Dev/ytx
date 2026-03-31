@@ -2,11 +2,9 @@
 ytx is a command line tool that converts YouTube transcripts into readable articles using LLMs.
 
 # Usage Currently
-![ytx live demo](assets/newdemo1.gif)
+![ytx tui demo](assets/ytx_tui.gif)
 
-Second run on same link
-
-![ytx live demo second run](assets/second_run.gif)
+![ytx adding transcript](assets/ytx_adding_transcript.gif)
 
 ## Installation
 ```
@@ -50,6 +48,10 @@ Delete a saved article by index or title:
 ytx delete <index | title>
 
 ```
+Run tui to view articles and read them as well
+```bash
+ytx
+```
 ## Example Workflow
 
 Generate an article from a video:
@@ -68,6 +70,10 @@ Delete an article:
 ```bash
 ytx delete 1
 ```
+Open tui
+```bash
+ytx
+```
 
 ## Features
 - Fetch YouTube transcripts
@@ -76,6 +82,7 @@ ytx delete 1
 - Caches transcripts for faster reruns
 - Search transcripts based on title of youtube video
 - Delete transcripts based on title or index
+- Read transcripts via ytx builtin tui
 ## How It Works
 1. Fetch transcript using the ytt crate
 2. Send transcript to selected Ollama model
@@ -87,6 +94,7 @@ ytx delete 1
 
 - [x] search transcripts based on title of youtube video
 
+- [x] tui reader built in ytx
+
 - [ ] support different file type outputs like pdf or md
 
-- [ ] tui reader built in ytx
