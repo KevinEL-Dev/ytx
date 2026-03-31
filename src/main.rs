@@ -242,7 +242,13 @@ impl App {
     }
     fn handle_key_event(&mut self,key_event: KeyEvent) {
         match key_event.code {
-            KeyCode::Char('q') => self.exit(),
+            KeyCode::Char('q') => {
+                if self.full_screen{
+                    self.toggle_fullscreen()
+                }else{
+                    self.exit()
+                }
+            }
             // instead of decrementing counter, move up in our article list
             KeyCode::Char('k') => {
                 if self.full_screen{
@@ -262,7 +268,7 @@ impl App {
                     self.increment_counter()
                 }
             }
-            KeyCode::Enter => self.set_fullscreen(),
+            KeyCode::Enter => self.toggle_fullscreen(),
             _ => {}
 
         }
@@ -270,7 +276,7 @@ impl App {
     fn exit(&mut self){
         self.exit = true;
     }
-    fn set_fullscreen(&mut self){
+    fn toggle_fullscreen(&mut self){
         if self.full_screen{
             self.full_screen = false
         }else{
