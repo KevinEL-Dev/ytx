@@ -195,7 +195,7 @@ impl App {
                 Paragraph::new(article_text)
                     .wrap(Wrap {trim: true})
                     .scroll((self.paragraph_y_offset,0))
-                    .block(Block::new().borders(Borders::ALL)),
+                    .block(Block::new().borders(Borders::ALL).title(Line::from(self.articles[self.selected_article].title.clone()).right_aligned().bold())),
                 outer_layout[0]);
 
         }
@@ -225,12 +225,12 @@ impl App {
         if self.full_screen{
             frame.render_widget(
                 Paragraph::new(instruction_text_fullscreen)
-                    .block(Block::new().borders(Borders::ALL)),
+                    .block(Block::new().borders(Borders::ALL).title(Line::from("Controls").bold())),
                 outer_layout[1]);
         }else{
             frame.render_widget(
                 Paragraph::new(instruction_text)
-                    .block(Block::new().borders(Borders::ALL)),
+                    .block(Block::new().borders(Borders::ALL).title(Line::from("Controls").bold())),
                 outer_layout[1]);
         }
     }
