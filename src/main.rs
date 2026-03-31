@@ -515,10 +515,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // installed
                     Err(err) => eprintln!("{err}"),
                 }
+                process::exit(1)
             }
         }
     }
-
     match &cli.command {
         Some(Commands::List) => {
             if let Err(err) = get_all_videos(&con) {
@@ -551,12 +551,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(err) => println!("Error: {err}"),
             },
         },
-        None => {}
-    }
-    let mut state = ListState::default();
-    let transcripts = get_all_videos_as_a_vec(&con);
-    if let Err(err) = ratatui::run(|terminal| App::default().run(terminal,&mut state,transcripts.expect("reason"),&con)){
-        eprintln!("{err}")
+        None => {
+            let mut state = ListState::default();
+            let transcripts = get_all_videos_as_a_vec(&con);
+            if let Err(err) = ratatui::run(|terminal| App::default().run(terminal,&mut state,transcripts.expect("reason"),&con)){
+                eprintln!("{err}")
+            }
+        }
     }
     Ok(())
 }
