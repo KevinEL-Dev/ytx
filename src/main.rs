@@ -6,6 +6,21 @@ use std::process::Command;
 use std::{fs, process::exit};
 use std::{io, process};
 
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use ratatui::prelude::*;
+
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::Stylize,
+    symbols::border,
+    text::{Line, Text},
+    widgets::{Block, Paragraph, Widget,List, ListDirection, ListItem, ListState, Wrap},
+    DefaultTerminal, Frame,
+    widgets::Borders,
+};
+
+use tui_markdown::from_str;
 use directories::ProjectDirs;
 
 use ollama_rs::Ollama;
@@ -72,13 +87,14 @@ enum Identifier {
     Title(String),
 }
 #[derive(Debug, Clone)]
-struct Transcript {
+pub struct Transcript {
     video_id: i32,
     title: String,
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::style::Style;
 
     #[test]
     fn test_create_data_dir() {
@@ -99,7 +115,231 @@ mod tests {
             None => panic!("something went wrong getting test path"),
         }
     }
+    #[test]
+    fn handle_key_event() {
+        let mut app = App::default();
+        app.handle_key_event(KeyCode::Char('j').into());
+        assert_eq!(app.selected_article, 1);
+
+        app.handle_key_event(KeyCode::Char('k').into());
+        assert_eq!(app.selected_article, 0);
+
+        let mut app = App::default();
+        app.handle_key_event(KeyCode::Char('q').into());
+        assert!(app.exit);
+    }
 }
+#[derive(Debug,Default)]
+pub struct App {
+    counter: u8,
+    articles: Vec<Transcript>,
+    selected_article:usize,
+    full_screen: bool,
+    paragraph_y_offset: u16,
+    exit: bool,
+}
+impl App {
+    pub fn run(&mut self, terminal: &mut DefaultTerminal,state: &mut ListState,articles: Vec<Transcript>,con: &Connection) -> io::Result<()>{
+        self.articles = articles;
+        let string_arr = self.turn_articles_arr_to_str();
+        self.full_screen = false;
+        while !self.exit{
+            terminal.draw(|frame| self.draw(frame,state,string_arr.clone(),con))?;
+            self.handle_events()?;
+            state.select(Some(self.selected_article));
+        }
+        Ok(())
+    }
+    fn draw(&self, frame: &mut Frame, mut state: &mut ListState,string_articles: Vec<String>,con: &Connection){
+        // I want the left side to be a list
+        // use this layout when not in fullscreen
+        let outer_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![
+                Constraint::Percentage(90),
+                Constraint::Percentage(10),
+            ])
+            .split(frame.area());
+        let layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![
+                Constraint::Percentage(50),
+                Constraint::Percentage(50)
+            ])
+            .split(outer_layout[0]);
+        let list = List::new(string_articles)
+            .block(Block::bordered().title(Line::from(format!("Saved Articles ({})",self.articles.len())).bold()))
+            .style(Style::new().white())
+            .highlight_style(Style::new().reversed())
+            .highlight_symbol(">> ")
+            .repeat_highlight_symbol(true)
+            .direction(ListDirection::TopToBottom);
+        // frame.render_widget(list,layout[]);
+        // render list when not in fullscreen
+        let video_id = self.articles[self.selected_article].video_id;
+        let body_text = get_transcript_body_from_video_id_no_mappings(con,video_id).unwrap();
+        let md_text = from_str(&body_text);
+        let article_text = Text::from(md_text);
+        if !self.full_screen {
+
+            frame.render_stateful_widget(list,layout[0],&mut state);
+            // right side should show the body text of the article
+            frame.render_widget(
+                Paragraph::new(article_text)
+                    .wrap(Wrap {trim: true})
+                    .block(Block::new().borders(Borders::ALL)),
+                layout[1]);
+        }else{
+            // render the article text in full screen
+            frame.render_widget(
+                Paragraph::new(article_text)
+                    .wrap(Wrap {trim: true})
+                    .scroll((self.paragraph_y_offset,0))
+                    .block(Block::new().borders(Borders::ALL).title(Line::from(self.articles[self.selected_article].title.clone()).right_aligned().bold())),
+                outer_layout[0]);
+
+        }
+        let instructions_non_full_screen = Line::from(vec![
+            "j/k".blue().bold(),
+            " Scroll ".into(),
+            "|".into(),
+            " Enter".blue().bold(),
+            " Read ".into(),
+            "|".into(),
+            " q".blue().bold(),
+            " Quit ".into(),
+        ]);
+        let instructions_full_screen = Line::from(vec![
+            "q".blue().bold(),
+            " Back ".into(),
+            "|".into(),
+            " j/k".blue().bold(),
+            " Scroll ".into(),
+        ]);
+
+        let instruction_text = Text::from(instructions_non_full_screen);
+        let instruction_text_fullscreen = Text::from(instructions_full_screen);
+        if self.full_screen{
+            frame.render_widget(
+                Paragraph::new(instruction_text_fullscreen)
+                    .block(Block::new().borders(Borders::ALL).title(Line::from("Controls").bold())),
+                outer_layout[1]);
+        }else{
+            frame.render_widget(
+                Paragraph::new(instruction_text)
+                    .block(Block::new().borders(Borders::ALL).title(Line::from("Controls").bold())),
+                outer_layout[1]);
+        }
+    }
+    fn handle_events(&mut self) -> io::Result<()>{
+        match event::read()? {
+            Event::Key(key_event) if key_event.kind == KeyEventKind::Press =>{
+                self.handle_key_event(key_event)
+            }
+            _ =>{}
+        };
+        Ok(())
+    }
+    fn handle_key_event(&mut self,key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Char('q') => {
+                if self.full_screen{
+                    self.toggle_fullscreen()
+                }else{
+                    self.exit()
+                }
+            }
+            // instead of decrementing counter, move up in our article list
+            KeyCode::Char('k') => {
+                if self.full_screen{
+                    self.up_scroll()
+                }else{
+
+                    self.decrement_counter()
+                }
+            }
+
+            // instead of incrementing counter, move down in our article list
+            KeyCode::Char('j') => {
+                if self.full_screen{
+                    self.down_scroll()
+                }else{
+
+                    self.increment_counter()
+                }
+            }
+            KeyCode::Enter => self.toggle_fullscreen(),
+            _ => {}
+
+        }
+    }
+    fn exit(&mut self){
+        self.exit = true;
+    }
+    fn toggle_fullscreen(&mut self){
+        if self.full_screen{
+            self.full_screen = false
+        }else{
+            self.full_screen = true
+        }
+    }
+    fn down_scroll(&mut self){
+        self.paragraph_y_offset += 1;
+    }
+    fn up_scroll(&mut self){
+        if self.paragraph_y_offset > 0{
+            self.paragraph_y_offset -= 1;
+        }
+    }
+    fn increment_counter(&mut self){
+        if self.selected_article < (self.articles.len() - 1).try_into().unwrap() {
+            self.selected_article += 1;
+        }
+    }
+    // scroll up
+    fn decrement_counter(&mut self){
+
+        if self.selected_article > 0{
+            self.selected_article -= 1;
+        }
+    }
+    fn turn_articles_arr_to_str(&mut self) -> Vec<String>{
+        let mut string_articles: Vec<String> = vec![];
+        for transcript in self.articles.clone(){
+            string_articles.push(transcript.title)
+        }
+        string_articles
+    }
+}
+impl Widget for &App{
+    // this will render our list of articles
+    fn render(self, area:Rect, buf: &mut Buffer){
+        let title = Line::from(" Your Articles ".bold());
+        let instructions = Line::from(vec![
+            " Decrement ".into(),
+            "<Left>".blue().bold(),
+            " Increment ".into(),
+            "<Right>".blue().bold(),
+            " Quit ".into(),
+            "<Q> ".blue().bold(),
+        ]);
+        let block = Block::bordered()
+            .title(title.centered())
+            .title_bottom(instructions.centered());
+
+        // render our list
+        let counter_text = Text::from(vec![Line::from(vec![
+            "Value: ".into(),
+            self.counter.to_string().yellow(),
+
+        ])]);
+        Paragraph::new(counter_text)
+            .centered()
+            .block(block)
+            .render(area,buf);
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
@@ -312,6 +552,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         },
         None => {}
+    }
+    let mut state = ListState::default();
+    let transcripts = get_all_videos_as_a_vec(&con);
+    if let Err(err) = ratatui::run(|terminal| App::default().run(terminal,&mut state,transcripts.expect("reason"),&con)){
+        eprintln!("{err}")
     }
     Ok(())
 }
@@ -576,6 +821,25 @@ fn get_all_videos(con: &Connection) -> Result<()> {
     }
     Ok(())
 }
+fn get_all_videos_as_a_vec(con: &Connection) -> Result<Vec<Transcript>> {
+    let mut stmt = con.prepare("SELECT title, video_id FROM transcript")?;
+    let transcript_iter = stmt.query_map([], |row| {
+        Ok(Transcript {
+            title: row.get(0)?,
+            video_id: row.get(1)?,
+        })
+    })?;
+    let mut in_order_video_id_mappings: HashMap<i32, i32> = HashMap::new();
+    let mut collect: Vec<Transcript> = Vec::new();
+    let mut counter = 1;
+    for transcript in transcript_iter {
+        let handled_transcript = transcript.unwrap();
+        collect.push(handled_transcript.clone());
+        in_order_video_id_mappings.insert(counter, handled_transcript.video_id);
+        counter += 1;
+    }
+    Ok(collect)
+}
 fn get_mappings_for_videos(con: &Connection) -> Result<HashMap<i32, i32>> {
     let mut stmt = con.prepare("SELECT title, video_id FROM transcript")?;
     let transcript_iter = stmt.query_map([], |row| {
@@ -612,6 +876,13 @@ fn get_transcript_body_from_video_id(con: &Connection, video_id: i32) -> Result<
         ),
         None => Ok("Invalid video id passed".to_string()),
     }
+}
+fn get_transcript_body_from_video_id_no_mappings(con: &Connection, video_id: i32) -> Result<String> {
+        con.query_row(
+            "SELECT body FROM ai_transcript WHERE video_id = :video_id",
+            named_params! {":video_id":video_id},
+            |row| row.get::<_, String>(0),
+        )
 }
 fn get_transcripts_from_title(con: &Connection, title: String) -> Result<Vec<Transcript>> {
     let mut stmt = con.prepare("SELECT title, video_id FROM transcript WHERE title LIKE :title")?;
