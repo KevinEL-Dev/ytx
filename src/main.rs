@@ -20,6 +20,7 @@ use ratatui::{
     widgets::Borders,
 };
 
+use textwrap::{fill,wrap,Options, WordSplitter,termwidth};
 use tui_markdown::from_str;
 use directories::ProjectDirs;
 
@@ -136,12 +137,14 @@ pub struct App {
     selected_article:usize,
     full_screen: bool,
     paragraph_y_offset: u16,
+    percentage_of_articles_layout: u16,
     exit: bool,
 }
 impl App {
     pub fn run(&mut self, terminal: &mut DefaultTerminal,state: &mut ListState,articles: Vec<Transcript>,con: &Connection) -> io::Result<()>{
         self.articles = articles;
         let string_arr = self.turn_articles_arr_to_str();
+        self.percentage_of_articles_layout = 50;
         self.full_screen = false;
         while !self.exit{
             terminal.draw(|frame| self.draw(frame,state,string_arr.clone(),con))?;
@@ -160,11 +163,14 @@ impl App {
                 Constraint::Percentage(10),
             ])
             .split(frame.area());
+        // have abilitiy to affect the layout percentage
+        // calc article view
+        let article_right_percentage = 100 - self.percentage_of_articles_layout;
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![
-                Constraint::Percentage(50),
-                Constraint::Percentage(50)
+                Constraint::Percentage(self.percentage_of_articles_layout),
+                Constraint::Percentage(article_right_percentage)
             ])
             .split(outer_layout[0]);
         let list = List::new(string_articles)
@@ -206,6 +212,9 @@ impl App {
             " Enter".blue().bold(),
             " Read ".into(),
             "|".into(),
+            " h/l".blue().bold(),
+            " Adjust Terminal ".into(),
+            "|".into(),
             " q".blue().bold(),
             " Quit ".into(),
         ]);
@@ -244,7 +253,8 @@ impl App {
         match key_event.code {
             KeyCode::Char('q') => {
                 if self.full_screen{
-                    self.toggle_fullscreen()
+                    self.toggle_fullscreen();
+                    self.reset_scroll_offset()
                 }else{
                     self.exit()
                 }
@@ -269,9 +279,32 @@ impl App {
                 }
             }
             KeyCode::Enter => self.toggle_fullscreen(),
+            KeyCode::Char('l') => {
+                if !self.full_screen{
+                    self.increase_article_percentage()
+                }
+            }
+            KeyCode::Char('h') => {
+                if !self.full_screen{
+                    self.decrease_article_percentage()
+                }
+            }
             _ => {}
 
         }
+    }
+    fn increase_article_percentage(&mut self){
+        if self.percentage_of_articles_layout < 80{
+            self.percentage_of_articles_layout += 5
+        }
+    }
+    fn decrease_article_percentage(&mut self){
+        if self.percentage_of_articles_layout > 50{
+            self.percentage_of_articles_layout -= 5
+        }
+    }
+    fn reset_scroll_offset(&mut self){
+        self.paragraph_y_offset = 0;
     }
     fn exit(&mut self){
         self.exit = true;
@@ -306,6 +339,8 @@ impl App {
     fn turn_articles_arr_to_str(&mut self) -> Vec<String>{
         let mut string_articles: Vec<String> = vec![];
         for transcript in self.articles.clone(){
+            // lets wrap the title before we push
+            // we need to know the size of the window before we wrap the text
             string_articles.push(transcript.title)
         }
         string_articles

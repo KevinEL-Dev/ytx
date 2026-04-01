@@ -22,4 +22,5 @@ ratatui = "0.30.0"
 crossterm = "0.29.0"
 color-eyre = "0.6.5"
 tui-markdown = "0.3.7"
+textwrap = {version = "0.16.2",features = ["terminal_size"]}
 
